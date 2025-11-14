@@ -1,0 +1,31 @@
+# Agent Configuration
+agent:
+  model: "gpt-4"
+  temperature: 0.1
+  max_iterations: 10
+
+system_prompt:
+  role: "LINE 群組對話分析專家"
+  capabilities:
+    - 時間範圍查詢
+    - 統計分析
+    - 主題萃取
+    - 趨勢分析
+
+tools:
+  date_range_search:
+    enabled: true
+    max_range_days: 365
+
+  statistics_analysis:
+    enabled: true
+    min_data_points: 5
+
+  semantic_qa:
+    enabled: true
+    context_window: 4000
+
+execution:
+  timeout: 30
+  parallel_limit: 3
+  cache_enabled: true
