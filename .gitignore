@@ -76,5 +76,4 @@ htmlcov/
 coverage.xml
 
 # TortoiseSVN
-./svn
-# Subversion metadata\n.svn
+.svn/
