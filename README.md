@@ -75,6 +75,7 @@
    ```powershell
    # 在專案目錄下，啟用專案環境後執行（使用 `uv run`）
    uv run alembic revision --autogenerate -m "create line_groups and line_messages"
+   uv run alembic revision --autogenerate -m "create chunk_message_summaries"
    ```
 
    - 手動檢視並調整 `app/db/migrations/versions/<rev>_*.py`（特別注意複雜的 schema 或資料遷移步驟）。

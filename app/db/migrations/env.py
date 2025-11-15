@@ -35,6 +35,7 @@ try:
     try:
         importlib.import_module("app.models.line_group")
         importlib.import_module("app.models.line_message")
+        importlib.import_module("app.models.chunk_message_summary")
     except Exception:
         pass
 

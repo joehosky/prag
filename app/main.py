@@ -46,5 +46,4 @@ def on_startup():
         run_alembic_upgrade(db_url=settings.database_url)
     except Exception as exc:
         logging.exception("Alembic upgrade failed — aborting startup")
-        # Re-raise to prevent starting with an unmanaged schema
         raise
