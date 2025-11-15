@@ -5,6 +5,7 @@
 ## 🚀 快速開始 (Windows 11)
 
 ### 環境需求
+
 - Windows 11
 - Python 3.11+
 - PostgreSQL 15+
@@ -13,18 +14,21 @@
 ### 安裝步驟
 
 1. **安裝 Python 3.11+**
+
    ```powershell
    # 從 Microsoft Store 安裝或從 python.org 下載
    python --version  # 確認版本
    ```
 
 2. **安裝 uv (Package Manager)**
+
    ```powershell
    # 使用 PowerShell 安裝
    powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
    ```
 
 3. **安裝 PostgreSQL**
+
    - 下載: https://www.postgresql.org/download/windows/
    - 安裝時記住設定的密碼
 
@@ -38,12 +42,14 @@
 ### 專案設定
 
 1. **執行設定腳本**
+
    ```powershell
    python setup_complete.py
    cd line-group-rag
    ```
 
 2. **設定環境變數**
+
    ```powershell
    copy .env.example .env
    # 使用記事本或 VSCode 編輯 .env 填入您的設定
@@ -51,32 +57,49 @@
    ```
 
 3. **安裝依賴**
+
    ```powershell
    # 使用 uv (推薦)
    uv sync
-   
+
    # 或使用 pip
    pip install -r requirements.txt
    ```
 
-4. **初始化資料庫**
-   ```powershell
-   uv run python scripts\init_db.py
-   uv run python scripts\init_qdrant.py
-   ```
+4. **初始化資料庫（使用 Alembic 管理 schema，建議流程）**
+
+   使用 Alembic 來管理資料表結構（推薦）。以下為開發 / 本機環境常用步驟：
+
+   - 產生 migration 檔（根據目前的 SQLAlchemy models，自動產生變更草稿）：
+     ```powershell
+     # 在專案目錄下，啟用 venv 後執行
+     .\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "create line_groups and line_messages"
+     ```
+
+   - 手動檢視並調整 `app/db/migrations/versions/<rev>_*.py`（特別注意複雜的 schema 或資料遷移步驟）。
+
+   - 套用 migration（在本機或目標資料庫）：
+     ```powershell
+     .\.venv\Scripts\python.exe -m alembic upgrade head
+     ```
+
+   - 若你在本機或測試環境只是要快速建立表，也可以在暫時情況下使用 `create_all()`（不推薦作為長期做法）。
 
 5. **啟動服務**
+
    ```powershell
-   # 開發模式（支援 auto-reload）
-   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   
-   # 或使用批次檔
+   # 開發模式（建議使用批次檔，它會在啟動前自動套用 migrations）
    start_dev.bat
+
+   # 或直接手動啟動（若你想手動控制 migrations）：
+   .\.venv\Scripts\python.exe -m alembic upgrade head
+   .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
 ## 📚 API 文檔
 
 啟動服務後訪問：
+
 - Swagger UI: http://localhost:8000/docs
 - ReDoc: http://localhost:8000/redoc
 
