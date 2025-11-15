@@ -1,17 +1,10 @@
+from __future__ import annotations
+
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy import (
-    Column,
-    Integer,
-    String,
-    Text,
-    DateTime,
-    Boolean,
-    ForeignKey,
-    Index,
-)
-from sqlalchemy.orm import relationship
+from sqlalchemy import Integer, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from .base import Base
 
@@ -19,42 +12,63 @@ from .base import Base
 class LineMessage(Base):
     __tablename__ = "line_messages"
 
-    id = Column(Integer, primary_key=True, comment="主鍵 ID")
-    group_id = Column(
+    id: Mapped[int] = mapped_column(primary_key=True, comment="主鍵 ID")
+
+    group_id: Mapped[int] = mapped_column(
         Integer,
-        ForeignKey("line_groups.id", ondelete="SET NULL"),
+        ForeignKey("line_groups.id", ondelete="CASCADE"),
         index=True,
-        nullable=True,
+        nullable=False,
         comment="所屬群組 ID",
     )
 
-    message_time = Column(
+    message_time: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True, index=True, comment="訊息時間"
     )
-    message_uid = Column(String(32), nullable=True, comment="所屬LINE訊息UID")
-    reply_message_uid = Column(String(32), nullable=True, comment="所屬LINE訊息回覆UID")
+    message_uid: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="所屬LINE訊息UID"
+    )
+    reply_message_uid: Mapped[str | None] = mapped_column(
+        String(32), nullable=True, comment="所屬LINE訊息回覆UID"
+    )
 
-    user_name = Column(String(64), nullable=True, comment="發送者名稱")
-    user_uid = Column(String(64), nullable=True, comment="發送者名稱")
+    user_name: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="發送者名稱"
+    )
+    user_uid: Mapped[str | None] = mapped_column(
+        String(64), nullable=True, comment="發送者 UID"
+    )
 
-    message_content = Column(Text, nullable=True, comment="訊息原文")
-    sticker = Column(String(200), nullable=True, comment="貼圖")
-    link_url = Column(String(2048), nullable=True, comment="檔案連結")
-    link_description = Column(Text, nullable=True, comment="描述")
-    message_description = Column(Text, nullable=True, comment="處理後摘要")
+    message_content: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="訊息原文"
+    )
+    sticker: Mapped[str | None] = mapped_column(
+        String(200), nullable=True, comment="貼圖"
+    )
+    link_url: Mapped[str | None] = mapped_column(
+        String(2048), nullable=True, comment="檔案連結"
+    )
+    link_description: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="描述"
+    )
+    message_description: Mapped[str | None] = mapped_column(
+        Text, nullable=True, comment="處理後摘要"
+    )
 
-    chunk_id = Column(String(100), nullable=True, index=True, comment="向量切塊 ID")
-    vector_processed = Column(
+    chunk_id: Mapped[str | None] = mapped_column(
+        String(100), nullable=True, index=True, comment="向量切塊 ID"
+    )
+    vector_processed: Mapped[bool] = mapped_column(
         Boolean, nullable=False, default=False, comment="已送入向量化處理"
     )
 
-    created_at = Column(
+    created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=datetime.utcnow,
         comment="建立時間",
     )
-    updated_at = Column(
+    updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
         default=datetime.utcnow,
@@ -62,12 +76,12 @@ class LineMessage(Base):
         comment="更新時間",
     )
 
-    group = relationship(
-        "LineGroup", back_populates="messages", foreign_keys=[group_id], lazy="joined"
+    group: Mapped[Optional["LineGroup"]] = relationship(
+        "LineGroup",
+        back_populates="messages",
+        foreign_keys=[group_id],
+        lazy="joined",
     )
 
     def __repr__(self) -> str:
         return f"<LineMessage id={self.id} group_id={self.group_id} message_uid={self.message_uid}>"
-
-
-# indexes are declared inline; additional compound indexes can be added here if needed
