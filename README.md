@@ -72,18 +72,18 @@
 
    - 產生 migration 檔（根據目前的 SQLAlchemy models，自動產生變更草稿）：
 
-     ```powershell
-     # 在專案目錄下，啟用 venv 後執行
-     .\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "create line_groups and line_messages"
-     ```
+   ```powershell
+   # 在專案目錄下，啟用專案環境後執行（使用 `uv run`）
+   uv run alembic revision --autogenerate -m "create line_groups and line_messages"
+   ```
 
    - 手動檢視並調整 `app/db/migrations/versions/<rev>_*.py`（特別注意複雜的 schema 或資料遷移步驟）。
 
    - 套用 migration（在本機或目標資料庫）：
 
-     ```powershell
-     .\.venv\Scripts\python.exe -m alembic upgrade head
-     ```
+   ```powershell
+   uv run alembic upgrade head
+   ```
 
    - 若你在本機或測試環境只是要快速建立表，也可以在暫時情況下使用 `create_all()`（不推薦作為長期做法）。
 
@@ -94,8 +94,8 @@
    start_dev.bat
 
    # 或直接手動啟動（若你想手動控制 migrations）：
-   .\.venv\Scripts\python.exe -m alembic upgrade head
-   .\.venv\Scripts\python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   uv run alembic upgrade head
+   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
    ```
 
 ## 📚 API 文檔
