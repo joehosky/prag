@@ -3,7 +3,7 @@ from typing import Optional
 from sqlalchemy import Engine
 
 from app.db import session as db_session
-from app.models import Base
+from app.db.base import Base
 
 
 def init_db(engine: Optional[Engine] = None) -> None:

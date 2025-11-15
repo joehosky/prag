@@ -6,7 +6,8 @@ from typing import List
 from sqlalchemy import Index, String, Text, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base
+from app.db.base import Base
+from app.models.line_message import LineMessage
 
 
 class LineGroup(Base):
@@ -95,7 +96,6 @@ class LineGroup(Base):
         "LineMessage",
         back_populates="group",
         cascade="all, delete-orphan",
-        passive_deletes=True,
         lazy="selectin",
     )
 

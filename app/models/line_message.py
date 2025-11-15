@@ -6,7 +6,8 @@ from typing import Optional
 from sqlalchemy import Integer, String, Text, DateTime, Boolean, ForeignKey
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from .base import Base
+from app.db.base import Base
+from app.models.line_group import LineGroup
 
 
 class LineMessage(Base):
