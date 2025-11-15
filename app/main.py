@@ -5,6 +5,7 @@ FastAPI Application Entry Point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import router as api_router
+from app.db.init_db import init_db
 
 # Create FastAPI instance
 app = FastAPI(
@@ -34,3 +35,18 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "healthy"}
+
+
+@app.on_event("startup")
+def on_startup():
+    """Run development DB initialization on startup.
+
+    This will create missing tables based on SQLAlchemy models. Use
+    Alembic for production schema migrations instead.
+    """
+    try:
+        init_db()
+    except Exception:
+        # don't fail startup in development if DB is not available
+        # (log/raise in production)
+        pass
