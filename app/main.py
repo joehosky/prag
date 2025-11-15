@@ -6,6 +6,8 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import router as api_router
 from app.db.init_db import init_db
+from app.db.alembic_runner import run_alembic_upgrade
+from app.core.config import settings
 
 # Create FastAPI instance
 app = FastAPI(
@@ -45,8 +47,10 @@ def on_startup():
     Alembic for production schema migrations instead.
     """
     try:
-        init_db()
+        run_alembic_upgrade(db_url=settings.database_url)
     except Exception:
-        # don't fail startup in development if DB is not available
-        # (log/raise in production)
-        pass
+        try:
+            init_db()
+        except Exception:
+            # in development we don't abort startup on DB issues
+            pass
