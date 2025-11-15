@@ -59,11 +59,11 @@
 3. **安裝依賴**
 
    ```powershell
-   # 使用 uv (推薦)
-   uv sync
+   # 安裝 uv
+   powershell -c "irm https://astral.sh/uv/install.ps1 | iex"
 
-   # 或使用 pip
-   pip install -r requirements.txt
+   # 安裝專案依賴
+   uv sync
    ```
 
 4. **初始化資料庫（使用 Alembic 管理 schema，建議流程）**

@@ -12,6 +12,22 @@ if config.config_file_name is not None:
     except Exception:
         pass
 
+# If alembic.ini uses a placeholder URL (e.g. 'driver:///'), try to
+# fall back to the application's settings.database_url for local/dev use.
+try:
+    url_opt = config.get_main_option("sqlalchemy.url")
+    if not url_opt or url_opt.startswith("driver"):
+        try:
+            from app.core.config import settings
+
+            config.set_main_option("sqlalchemy.url", settings.database_url)
+        except Exception:
+            # If settings cannot be imported, leave the config as-is and
+            # let engine_from_config raise a clear error later.
+            pass
+except Exception:
+    pass
+
 try:
     from app.db.base import Base
     import importlib
