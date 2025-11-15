@@ -5,9 +5,9 @@ FastAPI Application Entry Point
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.api.v1.endpoints import router as api_router
-from app.db.init_db import init_db
 from app.db.alembic_runner import run_alembic_upgrade
 from app.core.config import settings
+import logging
 
 # Create FastAPI instance
 app = FastAPI(
@@ -41,16 +41,10 @@ async def health():
 
 @app.on_event("startup")
 def on_startup():
-    """Run development DB initialization on startup.
-
-    This will create missing tables based on SQLAlchemy models. Use
-    Alembic for production schema migrations instead.
-    """
+    """Run DB initialization on startup."""
     try:
         run_alembic_upgrade(db_url=settings.database_url)
-    except Exception:
-        try:
-            init_db()
-        except Exception:
-            # in development we don't abort startup on DB issues
-            pass
+    except Exception as exc:
+        logging.exception("Alembic upgrade failed — aborting startup")
+        # Re-raise to prevent starting with an unmanaged schema
+        raise

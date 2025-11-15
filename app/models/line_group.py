@@ -1,13 +1,15 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import List
+from typing import List, TYPE_CHECKING
 
 from sqlalchemy import Index, String, Text, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
-from app.models.line_message import LineMessage
+
+if TYPE_CHECKING:
+    from app.models.line_message import LineMessage
 
 
 class LineGroup(Base):

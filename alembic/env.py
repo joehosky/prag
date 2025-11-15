@@ -6,18 +6,31 @@ from alembic import context
 
 import os
 
-# this is the Alembic Config object, which provides
-# access to the values within the .ini file in use.
+# this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
 
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    try:
+        fileConfig(config.config_file_name)
+    except Exception:
+        pass
 
 # Import your project's MetaData object here
 try:
-    from app.models.base import Base
+    # Use the same Declarative Base used by the application models
+    # (app.db.base.Base) so that metadata contains the model tables.
+    from app.db.base import Base
+
+    # Import model modules so that Base.metadata is populated for autogenerate.
+    try:
+        import importlib
+
+        importlib.import_module("app.models.line_group")
+        importlib.import_module("app.models.line_message")
+    except Exception:
+        pass
 
     target_metadata = Base.metadata
 except Exception:
