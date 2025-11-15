@@ -9,6 +9,17 @@ import os
 # this is the Alembic Config object, which provides access to the values within the .ini file in use.
 config = context.config
 
+# If the application exposes a settings object with the DB URL, prefer that
+# for CLI runs so developers don't need to edit alembic.ini locally.
+try:
+    from app.core.config import settings
+
+    if getattr(settings, "database_url", None):
+        config.set_main_option("sqlalchemy.url", settings.database_url)
+except Exception:
+    # ignore — fall back to alembic.ini
+    pass
+
 # Interpret the config file for Python logging.
 # This line sets up loggers basically.
 if config.config_file_name is not None:
