@@ -71,6 +71,7 @@
    使用 Alembic 來管理資料表結構（推薦）。以下為開發 / 本機環境常用步驟：
 
    - 產生 migration 檔（根據目前的 SQLAlchemy models，自動產生變更草稿）：
+
      ```powershell
      # 在專案目錄下，啟用 venv 後執行
      .\.venv\Scripts\python.exe -m alembic revision --autogenerate -m "create line_groups and line_messages"
@@ -79,6 +80,7 @@
    - 手動檢視並調整 `app/db/migrations/versions/<rev>_*.py`（特別注意複雜的 schema 或資料遷移步驟）。
 
    - 套用 migration（在本機或目標資料庫）：
+
      ```powershell
      .\.venv\Scripts\python.exe -m alembic upgrade head
      ```
