@@ -1,6 +1,7 @@
 # LINE 群組 RAG 系統架構規格書
 
 ## 📋 目錄
+
 1. [系統概述](#系統概述)
 2. [技術規格](#技術規格)
 3. [專案目錄結構](#專案目錄結構)
@@ -16,7 +17,9 @@
 ## 🎯 系統概述
 
 ### 系統目標
+
 開發一套基於 LangChain 1.0.x 的 LINE 群組 RAG（Retrieval-Augmented Generation）系統，支援：
+
 - 上傳 LINE 群組匯出的 Excel 訊息檔
 - 向量化儲存於 Qdrant
 - 原始對話儲存於 PostgreSQL
@@ -24,6 +27,7 @@
 - 智能 Agent 處理多樣化查詢需求
 
 ### 核心功能
+
 1. **資料匯入**：解析 LINE Excel 檔案並進行向量化處理
 2. **混合搜尋**：結合向量搜尋與 BM25 關鍵字搜尋
 3. **智能查詢**：使用 LangChain Agent 處理各類查詢
@@ -33,17 +37,17 @@
 
 ## 🛠️ 技術規格
 
-| 技術項目 | 版本/規格 | 用途 |
-|---------|----------|------|
-| **Python** | 3.11+ | 主要開發語言 |
-| **Package Manager** | uv | 套件管理與 auto-reload |
-| **Web Framework** | FastAPI | REST API 服務 |
-| **ORM** | SQLAlchemy 2.0+ | 資料庫 ORM |
-| **Database** | PostgreSQL 15+ | 主要資料儲存 |
-| **Vector DB** | Qdrant | 向量資料庫 |
-| **AI Framework** | LangChain 1.0.x | RAG Pipeline & Agent |
-| **LLM** | OpenAI GPT-4 | 語言模型 |
-| **Search** | BM25 | 關鍵字搜尋 |
+| 技術項目            | 版本/規格       | 用途                   |
+| ------------------- | --------------- | ---------------------- |
+| **Python**          | 3.11+           | 主要開發語言           |
+| **Package Manager** | uv              | 套件管理與 auto-reload |
+| **Web Framework**   | FastAPI         | REST API 服務          |
+| **ORM**             | SQLAlchemy 2.0+ | 資料庫 ORM             |
+| **Database**        | PostgreSQL 15+  | 主要資料儲存           |
+| **Vector DB**       | Qdrant          | 向量資料庫             |
+| **AI Framework**    | LangChain 1.0.x | RAG Pipeline & Agent   |
+| **LLM**             | OpenAI GPT-4    | 語言模型               |
+| **Search**          | BM25            | 關鍵字搜尋             |
 
 ---
 
@@ -67,7 +71,7 @@ line-group-rag/
 │   │       ├── __init__.py
 │   │       ├── routers/            # 路由控制器
 │   │       │   ├── __init__.py
-│   │       │   ├── upload.py       # Excel 上傳端點
+│   │       │   ├── messages.py     # Excel 上傳端點
 │   │       │   ├── query.py        # RAG 查詢端點
 │   │       │   ├── groups.py       # LINE 群組管理端點
 │   │       │   └── health.py       # 健康檢查端點
@@ -315,13 +319,13 @@ line-group-rag/
 
 ### 各層職責說明
 
-| 層級 | 位置 | 主要職責 | 特點 |
-|-----|------|---------|------|
-| **DB** | `app/db/` | 資料庫連線管理、遷移控制 | 實際的 PostgreSQL 實例 |
-| **Models** | `app/models/` | 定義資料表結構、關聯關係 | SQLAlchemy ORM 模型 |
-| **Schemas** | `app/schemas/` | API 資料驗證、序列化 | Pydantic 模型 |
-| **Repositories** | `app/repositories/` | 封裝資料庫操作 (CRUD) | 資料存取抽象層 |
-| **Services** | `app/services/` | 實作商業邏輯、協調各元件 | 不直接操作資料庫 |
+| 層級             | 位置                | 主要職責                 | 特點                   |
+| ---------------- | ------------------- | ------------------------ | ---------------------- |
+| **DB**           | `app/db/`           | 資料庫連線管理、遷移控制 | 實際的 PostgreSQL 實例 |
+| **Models**       | `app/models/`       | 定義資料表結構、關聯關係 | SQLAlchemy ORM 模型    |
+| **Schemas**      | `app/schemas/`      | API 資料驗證、序列化     | Pydantic 模型          |
+| **Repositories** | `app/repositories/` | 封裝資料庫操作 (CRUD)    | 資料存取抽象層         |
+| **Services**     | `app/services/`     | 實作商業邏輯、協調各元件 | 不直接操作資料庫       |
 
 ### 依賴原則
 
@@ -380,26 +384,27 @@ Router → Service → Repository → Model → DB
 
 ### Tool 分類架構
 
-| 工具類別 | 工具名稱 | 處理範例 |
-|---------|---------|---------|
-| **檢索工具** | date_range_tool | 「上週討論了什麼？」 |
-| | keyword_search_tool | 「關於產品A的討論」 |
-| | semantic_search_tool | 「大家對提案的看法」 |
-| | hybrid_search_tool | 複合條件查詢 |
-| **分析工具** | statistics_tool | 「本月討論統計」 |
-| | aggregation_tool | 「預算總額計算」 |
-| | trend_analysis_tool | 「討論熱度趨勢」 |
-| | frequency_tool | 「最常討論的主題」 |
-| **萃取工具** | entity_extraction_tool | 「提取人名、產品名」 |
-| | topic_extraction_tool | 「識別討論主題」 |
-| | sentiment_tool | 「分析討論氛圍」 |
-| **格式化工具** | summary_tool | 「總結本月重點」 |
-| | table_formatter_tool | 「製作統計表格」 |
-| | timeline_tool | 「生成時間軸」 |
+| 工具類別       | 工具名稱               | 處理範例              |
+| -------------- | ---------------------- | --------------------- |
+| **檢索工具**   | date_range_tool        | 「上週討論了什麼？」  |
+|                | keyword_search_tool    | 「關於產品 A 的討論」 |
+|                | semantic_search_tool   | 「大家對提案的看法」  |
+|                | hybrid_search_tool     | 複合條件查詢          |
+| **分析工具**   | statistics_tool        | 「本月討論統計」      |
+|                | aggregation_tool       | 「預算總額計算」      |
+|                | trend_analysis_tool    | 「討論熱度趨勢」      |
+|                | frequency_tool         | 「最常討論的主題」    |
+| **萃取工具**   | entity_extraction_tool | 「提取人名、產品名」  |
+|                | topic_extraction_tool  | 「識別討論主題」      |
+|                | sentiment_tool         | 「分析討論氛圍」      |
+| **格式化工具** | summary_tool           | 「總結本月重點」      |
+|                | table_formatter_tool   | 「製作統計表格」      |
+|                | timeline_tool          | 「生成時間軸」        |
 
 ### Tool 協作模式
 
 #### 串行模式 (Sequential)
+
 ```
 範例：「上週小明提到的產品問題」
 
@@ -411,6 +416,7 @@ Router → Service → Repository → Model → DB
 ```
 
 #### 並行模式 (Parallel)
+
 ```
 範例：「本月會議統計和重要決議」
 
@@ -421,6 +427,7 @@ Router → Service → Repository → Model → DB
 ```
 
 #### 條件模式 (Conditional)
+
 ```
 範例：「有討論過預算嗎？如果有，統計金額」
 
@@ -438,14 +445,14 @@ Router → Service → Repository → Model → DB
 
 ### API 端點設計
 
-| 端點 | 方法 | 功能描述 | Request | Response |
-|-----|------|---------|---------|----------|
-| `/api/v1/upload` | POST | 上傳 LINE Excel | MultipartForm + Metadata | UploadResponse |
-| `/api/v1/query` | POST | RAG 查詢 | QueryRequest | QueryResponse |
-| `/api/v1/groups` | GET | 列出群組 | - | GroupListResponse |
-| `/api/v1/groups/{id}` | GET | 群組詳情 | - | GroupDetailResponse |
-| `/api/v1/groups/{id}/messages` | GET | 群組訊息 | Pagination | MessageListResponse |
-| `/api/v1/health` | GET | 健康檢查 | - | HealthResponse |
+| 端點                           | 方法 | 功能描述        | Request                  | Response            |
+| ------------------------------ | ---- | --------------- | ------------------------ | ------------------- |
+| `/api/v1/upload`               | POST | 上傳 LINE Excel | MultipartForm + Metadata | UploadResponse      |
+| `/api/v1/query`                | POST | RAG 查詢        | QueryRequest             | QueryResponse       |
+| `/api/v1/groups`               | GET  | 列出群組        | -                        | GroupListResponse   |
+| `/api/v1/groups/{id}`          | GET  | 群組詳情        | -                        | GroupDetailResponse |
+| `/api/v1/groups/{id}/messages` | GET  | 群組訊息        | Pagination               | MessageListResponse |
+| `/api/v1/health`               | GET  | 健康檢查        | -                        | HealthResponse      |
 
 ### Request/Response Schema 結構
 
@@ -549,8 +556,8 @@ Excel 檔案上傳
 ### 分數融合公式
 
 ```
-score_final = α × norm(cosine_similarity) + 
-              β × norm(bm25_score) + 
+score_final = α × norm(cosine_similarity) +
+              β × norm(bm25_score) +
               γ × recency_boost
 
 where:
@@ -627,11 +634,13 @@ uv run mypy app/
 ## 📋 待辦事項
 
 ### Phase 1: 基礎建設 ✅
+
 - [x] 專案 scaffolding 與目錄架構確認
 - [x] 五層架構設計
 - [x] LangChain Agent 架構規劃
 
 ### Phase 2: 資料層設計
+
 - [ ] **Postgres + SQLAlchemy 模型規劃**
   - [ ] LINE 群組資料表設計
   - [ ] 訊息資料表設計
@@ -642,6 +651,7 @@ uv run mypy app/
   - [ ] 索引設計
 
 ### Phase 3: 資料處理
+
 - [ ] **Excel 解析模組規劃**
   - [ ] LINE 匯出格式分析
   - [ ] 欄位對應設計
@@ -650,6 +660,7 @@ uv run mypy app/
   - [ ] 錯誤處理機制
 
 ### Phase 4: 向量處理
+
 - [ ] **Embedding pipeline 與 Qdrant schema**
   - [ ] Embedding 模型選擇（OpenAI/Local）
   - [ ] Chunking 策略設計
@@ -659,6 +670,7 @@ uv run mypy app/
   - [ ] 向量維度管理
 
 ### Phase 5: 搜尋系統
+
 - [ ] **BM25 index 設計**
   - [ ] 索引結構規劃
   - [ ] 更新策略
@@ -667,6 +679,7 @@ uv run mypy app/
   - [ ] 中文分詞處理
 
 ### Phase 6: 評分系統
+
 - [ ] **資料融合分數邏輯（score fusion）**
   - [ ] Cosine similarity 正規化
   - [ ] BM25 分數正規化
@@ -676,6 +689,7 @@ uv run mypy app/
   - [ ] A/B 測試框架
 
 ### Phase 7: RAG Pipeline
+
 - [ ] **LangChain RAG pipeline 結構**
   - [ ] Retriever 設計
   - [ ] Chain 架構
@@ -685,6 +699,7 @@ uv run mypy app/
   - [ ] Streaming 支援
 
 ### Phase 8: Agent 系統
+
 - [ ] **LangChain Agent 實作**
   - [ ] Main Agent 建立
   - [ ] Tool 實作（15+ tools）
@@ -694,6 +709,7 @@ uv run mypy app/
   - [ ] Agent 記憶機制
 
 ### Phase 9: API 層
+
 - [ ] **FastAPI API 端點與 schema**
   - [ ] Upload API 實作
   - [ ] Query API 實作
@@ -703,6 +719,7 @@ uv run mypy app/
   - [ ] API 文檔（Swagger/ReDoc）
 
 ### Phase 10: 系統設定
+
 - [ ] **系統設定與部署**
   - [ ] 環境變數管理
   - [ ] 設定檔架構（YAML）
@@ -711,6 +728,7 @@ uv run mypy app/
   - [ ] CI/CD pipeline
 
 ### Phase 11: 監控與維護
+
 - [ ] **系統監控與日誌**
   - [ ] 結構化日誌（JSON）
   - [ ] APM 整合（Datadog/New Relic）
@@ -719,6 +737,7 @@ uv run mypy app/
   - [ ] 查詢分析儀表板
 
 ### Phase 12: 測試與品質
+
 - [ ] **測試策略**
   - [ ] 單元測試（>80% 覆蓋率）
   - [ ] 整合測試
@@ -731,6 +750,7 @@ uv run mypy app/
 ## 📊 系統規格摘要
 
 ### 效能目標
+
 - **上傳處理**：10,000 訊息/分鐘
 - **查詢回應**：< 2 秒（p95）
 - **並發支援**：100 concurrent users
@@ -738,6 +758,7 @@ uv run mypy app/
 - **可用性**：99.9% uptime
 
 ### 資源需求
+
 - **CPU**：8 cores minimum
 - **RAM**：16 GB minimum
 - **Storage**：100 GB SSD
@@ -745,6 +766,7 @@ uv run mypy app/
 - **PostgreSQL**：連線池 20-50
 
 ### 安全性
+
 - API Key 認證
 - Rate limiting
 - 資料加密（at rest & in transit）

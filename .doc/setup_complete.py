@@ -430,7 +430,7 @@ ipython==8.20.0
    ```powershell
    # 開發模式（支援 auto-reload）
    uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
-   
+
    # 或使用批次檔
    start_dev.bat
    ```
@@ -549,28 +549,28 @@ from typing import Optional
 class Settings(BaseSettings):
     # Database
     database_url: str = "postgresql://user:password@localhost:5432/line_rag_db"
-    
+
     # Qdrant
     qdrant_host: str = "localhost"
     qdrant_port: int = 6333
     qdrant_collection_name: str = "line_messages"
-    
+
     # OpenAI
     openai_api_key: str = ""
     openai_model: str = "gpt-4"
     openai_embedding_model: str = "text-embedding-3-small"
-    
+
     # Application
     app_env: str = "development"
     app_host: str = "0.0.0.0"
     app_port: int = 8000
-    
+
     # Score Fusion Weights
     score_weight_alpha: float = 0.5  # Cosine similarity
     score_weight_beta: float = 0.3   # BM25
     score_weight_gamma: float = 0.2  # Recency boost
     score_threshold: float = 0.3
-    
+
     class Config:
         env_file = ".env"
 
@@ -581,11 +581,11 @@ settings = Settings()
 API v1 Router Registration
 """
 from fastapi import APIRouter
-from app.api.v1.routers import upload, query, groups, health
+from app.api.v1.routers import messages, query, groups, health
 
 router = APIRouter()
 
-router.include_router(upload.router, prefix="/upload", tags=["upload"])
+router.include_router(messages.router, prefix="/messages", tags=["messages"])
 router.include_router(query.router, prefix="/query", tags=["query"])
 router.include_router(groups.router, prefix="/groups", tags=["groups"])
 router.include_router(health.router, prefix="/health", tags=["health"])
@@ -601,8 +601,8 @@ router = APIRouter()
 async def health_check():
     return {"status": "healthy", "service": "LINE Group RAG System"}
 ''',
-        "app/api/v1/routers/upload.py": '''"""
-Excel Upload Router
+        "app/api/v1/routers/messages.py": '''"""
+Messages Upload Router
 """
 from fastapi import APIRouter, UploadFile, File, HTTPException
 from typing import Optional
@@ -614,11 +614,11 @@ async def upload_excel(
     file: UploadFile = File(...),
     group_name: Optional[str] = None
 ):
-    """Upload LINE group Excel file"""
+    """Upload LINE group Excel file (messages router template)"""
     # Validate file extension
     if not file.filename.endswith(('.xlsx', '.xls')):
         raise HTTPException(status_code=400, detail="Only Excel files are supported")
-    
+
     # TODO: Implement upload logic
     return {
         "status": "success",
@@ -725,7 +725,7 @@ def init_database():
     """Initialize database tables"""
     print("Initializing database...")
     print(f"Database URL: {settings.database_url}")
-    
+
     try:
         engine = create_engine(settings.database_url)
         Base.metadata.create_all(bind=engine)
@@ -734,7 +734,7 @@ def init_database():
         print(f"✗ Error initializing database: {e}")
         print("Please make sure PostgreSQL is running and credentials are correct.")
         return False
-    
+
     return True
 
 if __name__ == "__main__":
@@ -756,23 +756,23 @@ def init_qdrant():
     """Initialize Qdrant collections"""
     print("Initializing Qdrant...")
     print(f"Qdrant host: {settings.qdrant_host}:{settings.qdrant_port}")
-    
+
     try:
         client = QdrantClient(
             host=settings.qdrant_host,
             port=settings.qdrant_port
         )
-        
+
         # Create collection for LINE messages
         collection_name = settings.qdrant_collection_name
-        
+
         # Check if collection exists
         collections = client.get_collections()
         if any(col.name == collection_name for col in collections.collections):
             print(f"Collection '{collection_name}' already exists")
             client.delete_collection(collection_name=collection_name)
             print(f"Deleted existing collection '{collection_name}'")
-        
+
         # Create new collection
         client.create_collection(
             collection_name=collection_name,
@@ -782,12 +782,12 @@ def init_qdrant():
             ),
         )
         print(f"✓ Qdrant collection '{collection_name}' initialized successfully!")
-        
+
     except Exception as e:
         print(f"✗ Error initializing Qdrant: {e}")
         print("Please make sure Qdrant is running.")
         return False
-    
+
     return True
 
 if __name__ == "__main__":
@@ -800,7 +800,7 @@ agent:
   model: "gpt-4"
   temperature: 0.1
   max_iterations: 10
-  
+
 system_prompt:
   role: "LINE 群組對話分析專家"
   capabilities:
@@ -808,16 +808,16 @@ system_prompt:
     - 統計分析
     - 主題萃取
     - 趨勢分析
-    
+
 tools:
   date_range_search:
     enabled: true
     max_range_days: 365
-    
+
   statistics_analysis:
     enabled: true
     min_data_points: 5
-    
+
   semantic_qa:
     enabled: true
     context_window: 4000
