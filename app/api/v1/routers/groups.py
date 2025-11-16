@@ -2,8 +2,15 @@
 LINE Groups Management Router
 """
 
-from typing import List, Dict, Optional
+from typing import List, Dict
 from enum import Enum as PyEnum
+
+from app.schemas.groups import (
+    CreateGroupRequest,
+    UpdateGroupRequest,
+    GroupStatus,
+    GroupResponse,
+)
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
@@ -15,41 +22,15 @@ from app.services.group_service import GroupService
 router = APIRouter()
 
 
-class GroupStatus(str, PyEnum):
-    active = "active"
-    inactive = "inactive"
-
-
-class CreateGroupRequest(BaseModel):
-    uniid: str
-    name: str
-    status: Optional[GroupStatus] = None
-
-
-class UpdateGroupRequest(BaseModel):
-    name: Optional[str] = None
-    status: Optional[GroupStatus] = None
-
-
-def _group_to_dict(g) -> Dict:
-    return {
-        "id": g.id,
-        "uniid": g.uniid,
-        "name": g.name,
-        "status": g.status,
-        "message_count": g.message_count,
-    }
-
-
-@router.get("/", response_model=List[Dict])
+@router.get("/", response_model=List[GroupResponse])
 def list_groups(db: Session = Depends(get_db)):
     """List active LINE groups"""
     svc = GroupService()
     groups = svc.list_active(db)
-    return [_group_to_dict(g) for g in groups]
+    return [GroupResponse.model_validate(g) for g in groups]
 
 
-@router.get("/{group_uni_id}")
+@router.get("/{group_id}", response_model=GroupResponse)
 def get_group(group_id: str, db: Session = Depends(get_db)):
     """Get specific group details by id"""
     svc = GroupService()
@@ -58,10 +39,10 @@ def get_group(group_id: str, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND, detail="Group not found"
         )
-    return _group_to_dict(grp)
+    return GroupResponse.model_validate(grp)
 
 
-@router.post("/", status_code=status.HTTP_201_CREATED)
+@router.post("/", response_model=GroupResponse, status_code=status.HTTP_201_CREATED)
 def create_group(payload: CreateGroupRequest, db: Session = Depends(get_db)):
     """Create a new LINE group"""
     svc = GroupService()
@@ -71,10 +52,10 @@ def create_group(payload: CreateGroupRequest, db: Session = Depends(get_db)):
     )
     db.commit()
     db.refresh(obj)
-    return _group_to_dict(obj)
+    return GroupResponse.model_validate(obj)
 
 
-@router.put("/{group_id}")
+@router.put("/{group_id}", response_model=GroupResponse)
 def update_group(
     group_id: str, payload: UpdateGroupRequest, db: Session = Depends(get_db)
 ):
@@ -95,4 +76,4 @@ def update_group(
     obj = svc.update_group(db, grp, updates)
     db.commit()
     db.refresh(obj)
-    return _group_to_dict(obj)
+    return GroupResponse.model_validate(obj)
