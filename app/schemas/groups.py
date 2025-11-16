@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from enum import Enum as PyEnum
+from enum import Enum
 from typing import Optional
 
 from pydantic import BaseModel
 
 
-class GroupStatus(str, PyEnum):
+class GroupStatus(str, Enum):
     active = "active"
     inactive = "inactive"
 
