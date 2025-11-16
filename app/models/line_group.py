@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List, TYPE_CHECKING
 
 from sqlalchemy import Index, String, Text, DateTime, Integer
+from sqlalchemy import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -80,14 +81,14 @@ class LineGroup(Base):
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
+        server_default=func.now(),
         comment="建立時間",
     )
     updated_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
-        default=datetime.utcnow,
-        onupdate=datetime.utcnow,
+        server_default=func.now(),
+        onupdate=func.now(),
         comment="更新時間",
     )
     deleted_at: Mapped[datetime | None] = mapped_column(
