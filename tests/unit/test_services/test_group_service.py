@@ -8,7 +8,8 @@ from app.services.group_service import GroupService
 
 def setup_in_memory_db():
     engine = create_engine("sqlite:///:memory:", future=True)
-    import app.models.line_message  # Ensure related models are imported so SQLAlchemy can resolve relationships
+    # Ensure related models are imported so SQLAlchemy can resolve relationships
+    import app.models.line_message  # noqa: F401
 
     Base.metadata.create_all(engine)
     SessionLocal = sessionmaker(bind=engine, future=True)
@@ -52,3 +53,23 @@ def test_list_active_and_soft_delete():
 
         post = service.get_by_uniid(db, "g-a")
         assert post is None
+
+
+def test_update_group():
+    SessionLocal = setup_in_memory_db()
+    with SessionLocal() as db:
+        service = GroupService()
+
+        group = service.create_group(db, uniid="g-upd", name="Orig")
+        db.commit()
+        db.refresh(group)
+
+        # update name and status
+        updated = service.update_group(
+            db, group, {"name": "Updated", "status": "inactive"}
+        )
+        db.commit()
+        db.refresh(updated)
+
+        assert updated.name == "Updated"
+        assert updated.status == "inactive"

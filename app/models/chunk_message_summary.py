@@ -46,8 +46,8 @@ class ChunkMessageSummary(Base):
         DateTime, nullable=False, comment="片段結束時間"
     )
 
-    message_ids: Mapped[str] = mapped_column(
-        String(1024), nullable=False, comment="訊息 id 列表（如1,3,12,16）"
+    message_ids: Mapped[Optional[str]] = mapped_column(
+        String(1024), nullable=True, comment="訊息 id 列表（如1,3,12,16），可為空"
     )
     message_content: Mapped[Optional[str]] = mapped_column(
         Text, nullable=True, comment="處理前訊息"

@@ -11,6 +11,9 @@ from app.db.base import Base
 
 if TYPE_CHECKING:
     from app.models.line_message import LineMessage
+    from app.models.chunk_message_summary import ChunkMessageSummary
+    from app.models.group_message_summary import GroupMessageSummary
+    from app.models.message_summary_tag import MessageSummaryTag
 
 
 class LineGroup(Base):
@@ -97,6 +100,27 @@ class LineGroup(Base):
 
     messages: Mapped[List["LineMessage"]] = relationship(
         "LineMessage",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    chunk_message_summaries: Mapped[List["ChunkMessageSummary"]] = relationship(
+        "ChunkMessageSummary",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    group_message_summaries: Mapped[List["GroupMessageSummary"]] = relationship(
+        "GroupMessageSummary",
+        back_populates="group",
+        cascade="all, delete-orphan",
+        lazy="selectin",
+    )
+
+    message_summary_tags: Mapped[List["MessageSummaryTag"]] = relationship(
+        "MessageSummaryTag",
         back_populates="group",
         cascade="all, delete-orphan",
         lazy="selectin",
