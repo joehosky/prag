@@ -128,7 +128,6 @@ async def upload_excel(
         return created
 
     # Handler for qa_message type (imports question/answer pairs)
-    # Expect fixed-column format: A (col 0) = question, B (col 1) = answer
     def _import_qa_messages(db, msg_svc, grp, data_rows):
         created = 0
 
@@ -136,10 +135,10 @@ async def upload_excel(
             return row[idx] if idx < len(row) else None
 
         for row in data_rows:
+            # Expect fixed-column format: A (col 0) = question, B (col 1) = answer
             question = _col(row, 0)
             answer = _col(row, 1)
 
-            # combine into single message_content
             parts = []
             if question is not None:
                 parts.append(f"question: {question}")
