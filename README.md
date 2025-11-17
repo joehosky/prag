@@ -96,7 +96,7 @@
 
    # 或直接手動啟動（若你想手動控制 migrations）：
    uv run alembic upgrade head
-   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+   uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
    ```
 
 ## 📚 API 文檔

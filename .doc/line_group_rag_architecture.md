@@ -595,7 +595,7 @@ uv run python scripts/init_qdrant.py
 
 ```bash
 # 啟動 FastAPI (支援 auto-reload)
-uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
 # 或使用自定義啟動腳本
 uv run python -m app.main

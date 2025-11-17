@@ -120,7 +120,7 @@ OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # Application
 APP_ENV=development
-APP_HOST=0.0.0.0
+APP_HOST=127.0.0.1
 APP_PORT=8000
 APP_RELOAD=true
 
@@ -429,7 +429,7 @@ ipython==8.20.0
 5. **啟動服務**
    ```powershell
    # 開發模式（支援 auto-reload）
-   uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+    uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 
    # 或使用批次檔
    start_dev.bat
@@ -477,7 +477,7 @@ MIT License
         "start_dev.bat": """@echo off
 echo Starting LINE Group RAG System (Development Mode)...
 echo.
-python.exe -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+python.exe -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
 pause
 """,
         "setup.bat": """@echo off
@@ -562,7 +562,7 @@ class Settings(BaseSettings):
 
     # Application
     app_env: str = "development"
-    app_host: str = "0.0.0.0"
+    app_host: str = "127.0.0.1"
     app_port: int = 8000
 
     # Score Fusion Weights
