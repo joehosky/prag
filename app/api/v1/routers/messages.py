@@ -8,6 +8,7 @@ from enum import Enum
 from csv import reader as csv_reader
 
 from sqlalchemy.orm import Session
+from datetime import datetime
 
 from app.db.session import get_db
 from app.services.group_service import GroupService
@@ -39,7 +40,7 @@ async def upload_excel(
     gsvc = GroupService()
     grp = gsvc.get_by_uniid(db, group_uniid)
     if not grp:
-        raise HTTPException(status_code=404, detail="group_uniid not found")
+        raise HTTPException(status_code=404, detail="group not found")
 
     msg_svc = MessageService()
 
@@ -56,58 +57,104 @@ async def upload_excel(
         data_rows = rows[1:]
         return headers, data_rows
 
-    # Handler for line_message type (existing behavior)
-    def _import_line_messages(db, msg_svc, grp, headers, data_rows):
+    # Handler for line_message type
+    def _import_line_messages(db, msg_svc, grp, data_rows):
         created = 0
+
+        def _col(row, idx):
+            return row[idx] if idx < len(row) else None
+
+        def _parse_dt(val):
+            if not val:
+                return None
+            if isinstance(val, datetime):
+                return val
+            s = str(val).strip()
+            for fmt in (
+                "%Y-%m-%d %H:%M:%S",
+                "%Y/%m/%d %H:%M:%S",
+                "%Y-%m-%d",
+                "%Y/%m/%d",
+            ):
+                try:
+                    return datetime.strptime(s, fmt)
+                except Exception:
+                    pass
+            try:
+                return datetime.fromisoformat(s)
+            except Exception:
+                return None
+
         for row in data_rows:
-            data = {
-                headers[j]: row[j] if j < len(row) else None
-                for j in range(len(headers))
-            }
+            # Fixed-column mapping: A..I -> 0..8
+            # A: time, B: message_uid, C: reply_message_uid, D: user_name, E: user_uid,
+            # F: message_content, G: sticker, H: link_url, I: link_description
+            message_time = _parse_dt(_col(row, 0))
+            message_uid = _col(row, 1)
+            reply_message_uid = _col(row, 2)
+            user_name = _col(row, 3)
+            user_uid = _col(row, 4)
+            message_content = _col(row, 5)
+            sticker = _col(row, 6)
+            link_url = _col(row, 7)
+            link_description = _col(row, 8)
+
             params = {}
             if grp:
                 params["group_id"] = grp.id
-            elif "group_id" in data and data["group_id"]:
-                try:
-                    params["group_id"] = int(data["group_id"])
-                except Exception:
-                    pass
-            params["message_content"] = (
-                data.get("message_content") or data.get("content") or None
-            )
-            params["message_uid"] = data.get("message_uid")
+
+            if message_time is not None:
+                params["message_time"] = message_time
+            if message_uid is not None:
+                params["message_uid"] = str(message_uid)
+            if reply_message_uid is not None:
+                params["reply_message_uid"] = str(reply_message_uid)
+            if user_name is not None:
+                params["user_name"] = str(user_name)
+            if user_uid is not None:
+                params["user_uid"] = str(user_uid)
+            if message_content is not None:
+                params["message_content"] = str(message_content)
+            if sticker is not None:
+                params["sticker"] = str(sticker)
+            if link_url is not None:
+                params["link_url"] = str(link_url)
+            if link_description is not None:
+                params["link_description"] = str(link_description)
+
             msg_svc.create_message(db, **params)
             created += 1
+
         return created
 
     # Handler for qa_message type (imports question/answer pairs)
-    def _import_qa_messages(db, msg_svc, grp, headers, data_rows):
+    # Expect fixed-column format: A (col 0) = question, B (col 1) = answer
+    def _import_qa_messages(db, msg_svc, grp, data_rows):
         created = 0
+
+        def _col(row, idx):
+            return row[idx] if idx < len(row) else None
+
         for row in data_rows:
-            data = {
-                headers[j]: row[j] if j < len(row) else None
-                for j in range(len(headers))
-            }
-            question = data.get("question") or data.get("q") or data.get("prompt")
-            answer = data.get("answer") or data.get("a") or data.get("response")
-            uid = data.get("message_uid") or data.get("uid") or None
+            question = _col(row, 0)
+            answer = _col(row, 1)
 
-            if question:
-                params = {"message_content": question, "message_uid": uid}
-                if grp:
-                    params["group_id"] = grp.id
-                msg_svc.create_message(db, **params)
-                created += 1
+            # combine into single message_content
+            parts = []
+            if question is not None:
+                parts.append(f"question: {question}")
+            if answer is not None:
+                parts.append(f"answer: {answer}")
+            if not parts:
+                continue
+            message_content = "\n\n".join(parts)
 
-            if answer:
-                params = {
-                    "message_content": answer,
-                    "message_uid": (f"{uid}_a" if uid else None),
-                }
-                if grp:
-                    params["group_id"] = grp.id
-                msg_svc.create_message(db, **params)
-                created += 1
+            params = {"message_content": str(message_content)}
+            if grp:
+                params["group_id"] = grp.id
+
+            msg_svc.create_message(db, **params)
+            created += 1
 
         return created
 
@@ -121,7 +168,7 @@ async def upload_excel(
         )
 
     if excel_type == ExcelType.LINE_MESSAGE:
-        created = _import_line_messages(db, msg_svc, grp, headers, data_rows)
+        created = _import_line_messages(db, msg_svc, grp, data_rows)
     elif excel_type == ExcelType.QA_MESSAGE:
         created = _import_qa_messages(db, msg_svc, grp, headers, data_rows)
     else:

@@ -51,6 +51,7 @@ logs/
 data/uploads/*
 data/processed/*
 data/indexes/*
+test_resource/*
 !data/uploads/.gitkeep
 !data/processed/.gitkeep
 !data/indexes/.gitkeep
