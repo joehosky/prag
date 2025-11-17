@@ -113,9 +113,29 @@ python -m uvicorn app.main:app --reload
 
 ### 7. 存取系統
 
-- API 文檔: http://localhost:8000/docs
-- 健康檢查: http://localhost:8000/health
-- 主要 API: http://localhost:8000/api/v1/
+- API 文檔: http://localhost:8200/docs
+- 健康檢查: http://localhost:8200/health
+- 主要 API: http://localhost:8200/api/v1/
+
+### 8. 建立或調整資料表
+
+使用 Alembic 來管理資料表結構。
+
+- 產生 migration 檔（根據目前的 SQLAlchemy models，自動產生變更草稿）：
+
+```powershell
+# 在專案目錄下，啟用專案環境後執行（使用 `uv run`）
+uv run alembic revision --autogenerate -m "create line_groups and line_messages"
+uv run alembic revision --autogenerate -m "create chunk_message_summaries"
+```
+
+- 手動檢視並調整 `app/db/migrations/versions/<rev>_*.py`（特別注意複雜的 schema 或資料遷移步驟）。
+
+- 套用 migration（在本機或目標資料庫）：
+
+```powershell
+uv run alembic upgrade head
+```
 
 ## 🛠️ Windows 批次檔說明
 
@@ -151,7 +171,7 @@ line-group-rag/
 1. **Python 版本**: 需要 Python 3.11 或更高版本
 2. **資料庫**: 確保 PostgreSQL 和 Qdrant 正在執行
 3. **API Key**: 記得在 .env 中設定 OpenAI API Key
-4. **防火牆**: 可能需要允許 localhost:8000 和 6333 端口
+4. **防火牆**: 可能需要允許 localhost:8200 和 6333 端口
 
 ## 🆘 常見問題
 

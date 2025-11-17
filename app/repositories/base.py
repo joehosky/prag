@@ -1,5 +1,6 @@
 from typing import Generic, Type, TypeVar, List, Optional, Dict, Any
 
+from datetime import datetime, timezone
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
@@ -23,6 +24,14 @@ class BaseRepository(Generic[T]):
         return db.scalars(stmt).all()
 
     def create(self, db: Session, obj_in: Dict[str, Any]) -> T:
+        # Ensure timestamps are present to satisfy NOT NULL DB constraints when
+        # the DB column has no server-default. Use UTC timestamps.
+        now = datetime.now(timezone.utc)
+        if "created_at" not in obj_in:
+            obj_in["created_at"] = now
+        if "updated_at" not in obj_in:
+            obj_in["updated_at"] = now
+
         obj = self.model(**obj_in)
         db.add(obj)
         return obj

@@ -96,15 +96,15 @@
 
    # 或直接手動啟動（若你想手動控制 migrations）：
    uv run alembic upgrade head
-   uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+   uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8200
    ```
 
 ## 📚 API 文檔
 
 啟動服務後訪問：
 
-- Swagger UI: http://localhost:8000/docs
-- ReDoc: http://localhost:8000/redoc
+- Swagger UI: http://localhost:8200/docs
+- ReDoc: http://localhost:8200/redoc
 
 ## 🧪 測試
 

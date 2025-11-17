@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     # Application
     app_env: str = "development"
     app_host: str = "127.0.0.1"
-    app_port: int = 8000
+    app_port: int = 8200
 
     # Score Fusion Weights
     score_weight_alpha: float = 0.5  # Cosine similarity

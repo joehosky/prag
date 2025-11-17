@@ -37,17 +37,17 @@
 
 ## 🛠️ 技術規格
 
-| 技術項目            | 版本/規格       | 用途                   |
-| ------------------- | --------------- | ---------------------- |
-| **Python**          | 3.11+           | 主要開發語言           |
-| **Package Manager** | uv              | 套件管理與 auto-reload |
+| 技術項目                | 版本/規格           | 用途                   |
+| ------------------- | --------------- | -------------------- |
+| **Python**          | 3.11+           | 主要開發語言               |
+| **Package Manager** | uv              | 套件管理與 auto-reload    |
 | **Web Framework**   | FastAPI         | REST API 服務          |
-| **ORM**             | SQLAlchemy 2.0+ | 資料庫 ORM             |
-| **Database**        | PostgreSQL 15+  | 主要資料儲存           |
-| **Vector DB**       | Qdrant          | 向量資料庫             |
-| **AI Framework**    | LangChain 1.0.x | RAG Pipeline & Agent   |
-| **LLM**             | OpenAI GPT-4    | 語言模型               |
-| **Search**          | BM25            | 關鍵字搜尋             |
+| **ORM**             | SQLAlchemy 2.0+ | 資料庫 ORM              |
+| **Database**        | PostgreSQL 15+  | 主要資料儲存               |
+| **Vector DB**       | Qdrant          | 向量資料庫                |
+| **AI Framework**    | LangChain 1.0.x | RAG Pipeline & Agent |
+| **LLM**             | OpenAI GPT-4    | 語言模型                 |
+| **Search**          | BM25            | 關鍵字搜尋                |
 
 ---
 
@@ -319,13 +319,13 @@ line-group-rag/
 
 ### 各層職責說明
 
-| 層級             | 位置                | 主要職責                 | 特點                   |
-| ---------------- | ------------------- | ------------------------ | ---------------------- |
-| **DB**           | `app/db/`           | 資料庫連線管理、遷移控制 | 實際的 PostgreSQL 實例 |
-| **Models**       | `app/models/`       | 定義資料表結構、關聯關係 | SQLAlchemy ORM 模型    |
-| **Schemas**      | `app/schemas/`      | API 資料驗證、序列化     | Pydantic 模型          |
-| **Repositories** | `app/repositories/` | 封裝資料庫操作 (CRUD)    | 資料存取抽象層         |
-| **Services**     | `app/services/`     | 實作商業邏輯、協調各元件 | 不直接操作資料庫       |
+| 層級               | 位置                  | 主要職責           | 特點                |
+| ---------------- | ------------------- | -------------- | ----------------- |
+| **DB**           | `app/db/`           | 資料庫連線管理、遷移控制   | 實際的 PostgreSQL 實例 |
+| **Models**       | `app/models/`       | 定義資料表結構、關聯關係   | SQLAlchemy ORM 模型 |
+| **Schemas**      | `app/schemas/`      | API 資料驗證、序列化   | Pydantic 模型       |
+| **Repositories** | `app/repositories/` | 封裝資料庫操作 (CRUD) | 資料存取抽象層           |
+| **Services**     | `app/services/`     | 實作商業邏輯、協調各元件   | 不直接操作資料庫          |
 
 ### 依賴原則
 
@@ -384,22 +384,22 @@ Router → Service → Repository → Model → DB
 
 ### Tool 分類架構
 
-| 工具類別       | 工具名稱               | 處理範例              |
-| -------------- | ---------------------- | --------------------- |
-| **檢索工具**   | date_range_tool        | 「上週討論了什麼？」  |
-|                | keyword_search_tool    | 「關於產品 A 的討論」 |
-|                | semantic_search_tool   | 「大家對提案的看法」  |
-|                | hybrid_search_tool     | 複合條件查詢          |
-| **分析工具**   | statistics_tool        | 「本月討論統計」      |
-|                | aggregation_tool       | 「預算總額計算」      |
-|                | trend_analysis_tool    | 「討論熱度趨勢」      |
-|                | frequency_tool         | 「最常討論的主題」    |
-| **萃取工具**   | entity_extraction_tool | 「提取人名、產品名」  |
-|                | topic_extraction_tool  | 「識別討論主題」      |
-|                | sentiment_tool         | 「分析討論氛圍」      |
-| **格式化工具** | summary_tool           | 「總結本月重點」      |
-|                | table_formatter_tool   | 「製作統計表格」      |
-|                | timeline_tool          | 「生成時間軸」        |
+| 工具類別      | 工具名稱                   | 處理範例         |
+| --------- | ---------------------- | ------------ |
+| **檢索工具**  | date_range_tool        | 「上週討論了什麼？」   |
+|           | keyword_search_tool    | 「關於產品 A 的討論」 |
+|           | semantic_search_tool   | 「大家對提案的看法」   |
+|           | hybrid_search_tool     | 複合條件查詢       |
+| **分析工具**  | statistics_tool        | 「本月討論統計」     |
+|           | aggregation_tool       | 「預算總額計算」     |
+|           | trend_analysis_tool    | 「討論熱度趨勢」     |
+|           | frequency_tool         | 「最常討論的主題」    |
+| **萃取工具**  | entity_extraction_tool | 「提取人名、產品名」   |
+|           | topic_extraction_tool  | 「識別討論主題」     |
+|           | sentiment_tool         | 「分析討論氛圍」     |
+| **格式化工具** | summary_tool           | 「總結本月重點」     |
+|           | table_formatter_tool   | 「製作統計表格」     |
+|           | timeline_tool          | 「生成時間軸」      |
 
 ### Tool 協作模式
 
@@ -445,14 +445,14 @@ Router → Service → Repository → Model → DB
 
 ### API 端點設計
 
-| 端點                           | 方法 | 功能描述        | Request                  | Response            |
-| ------------------------------ | ---- | --------------- | ------------------------ | ------------------- |
+| 端點                             | 方法   | 功能描述          | Request                  | Response            |
+| ------------------------------ | ---- | ------------- | ------------------------ | ------------------- |
 | `/api/v1/upload`               | POST | 上傳 LINE Excel | MultipartForm + Metadata | UploadResponse      |
 | `/api/v1/query`                | POST | RAG 查詢        | QueryRequest             | QueryResponse       |
-| `/api/v1/groups`               | GET  | 列出群組        | -                        | GroupListResponse   |
-| `/api/v1/groups/{id}`          | GET  | 群組詳情        | -                        | GroupDetailResponse |
-| `/api/v1/groups/{id}/messages` | GET  | 群組訊息        | Pagination               | MessageListResponse |
-| `/api/v1/health`               | GET  | 健康檢查        | -                        | HealthResponse      |
+| `/api/v1/groups`               | GET  | 列出群組          | -                        | GroupListResponse   |
+| `/api/v1/groups/{id}`          | GET  | 群組詳情          | -                        | GroupDetailResponse |
+| `/api/v1/groups/{id}/messages` | GET  | 群組訊息          | Pagination               | MessageListResponse |
+| `/api/v1/health`               | GET  | 健康檢查          | -                        | HealthResponse      |
 
 ### Request/Response Schema 結構
 
@@ -595,7 +595,7 @@ uv run python scripts/init_qdrant.py
 
 ```bash
 # 啟動 FastAPI (支援 auto-reload)
-uv run uvicorn app.main:app --reload --host 127.0.0.1 --port 8000
+uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 # 或使用自定義啟動腳本
 uv run python -m app.main
