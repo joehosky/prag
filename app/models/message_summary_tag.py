@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import Boolean, DateTime, ForeignKey, Index, Integer
+import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -28,7 +29,7 @@ class MessageSummaryTag(Base):
     )
 
     summary_time: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True, comment="摘要時間"
+        DateTime(timezone=False), nullable=True, comment="摘要時間"
     )
 
     chunk_summary: Mapped[bool] = mapped_column(
@@ -52,15 +53,15 @@ class MessageSummaryTag(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         comment="建立時間",
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         onupdate=func.now(),
         index=True,
         comment="更新時間",

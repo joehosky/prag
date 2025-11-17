@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import Integer, String, Text, DateTime, Boolean, ForeignKey
+import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,7 +28,7 @@ class LineMessage(Base):
     )
 
     message_time: Mapped[datetime | None] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True, comment="訊息時間"
+        DateTime(timezone=False), nullable=True, index=True, comment="訊息時間"
     )
     message_uid: Mapped[str | None] = mapped_column(
         String(32), nullable=True, comment="所屬LINE訊息UID"
@@ -67,15 +68,15 @@ class LineMessage(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         comment="建立時間",
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         onupdate=func.now(),
         comment="更新時間",
     )

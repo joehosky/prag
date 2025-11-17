@@ -12,6 +12,7 @@ from sqlalchemy import (
     Text,
     func,
 )
+import sqlalchemy as sa
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -40,10 +41,10 @@ class ChunkMessageSummary(Base):
     )
 
     start_time: Mapped[Optional[DateTime]] = mapped_column(
-        DateTime, nullable=False, comment="片段開始時間"
+        DateTime(timezone=False), nullable=False, comment="片段開始時間"
     )
     end_time: Mapped[Optional[DateTime]] = mapped_column(
-        DateTime, nullable=False, comment="片段結束時間"
+        DateTime(timezone=False), nullable=False, comment="片段結束時間"
     )
 
     message_ids: Mapped[Optional[str]] = mapped_column(
@@ -67,13 +68,13 @@ class ChunkMessageSummary(Base):
 
     created_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=False),
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         nullable=False,
         comment="建立時間",
     )
     updated_at: Mapped[DateTime] = mapped_column(
         DateTime(timezone=False),
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         onupdate=func.now(),
         index=True,
         comment="更新時間",

@@ -6,7 +6,7 @@ import sqlalchemy as sa
 
 
 # revision identifiers, used by Alembic.
-revision = "f9f76d1ce358"
+revision = "9e24505e467a"
 down_revision = None
 branch_labels = None
 depends_on = None
@@ -33,9 +33,9 @@ def upgrade():
     sa.Column('daily_summary_prompt', sa.Text(), nullable=True, comment='訊息日摘要的提示詞'),
     sa.Column('analyze_intent_prompt', sa.Text(), nullable=True, comment='使用者提問意圖的提示詞'),
     sa.Column('synthesize_answer_prompt', sa.Text(), nullable=True, comment='答案總結的提示詞'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='更新時間'),
-    sa.Column('deleted_at', sa.DateTime(timezone=True), nullable=True, comment='軟刪除時間'),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='建立時間'),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='更新時間'),
+    sa.Column('deleted_at', sa.DateTime(), nullable=True, comment='軟刪除時間'),
     sa.PrimaryKeyConstraint('id')
     )
     op.create_index(op.f('ix_line_groups_status'), 'line_groups', ['status'], unique=False)
@@ -52,8 +52,8 @@ def upgrade():
     sa.Column('message_summary', sa.Text(), nullable=True, comment='處理後摘要'),
     sa.Column('qdrant_point_id', sa.String(length=100), nullable=True, comment='Qdrant point id'),
     sa.Column('embedding', sa.JSON(), nullable=True, comment='Embedding vector'),
-    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()'), nullable=False, comment='更新時間'),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='建立時間'),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='更新時間'),
     sa.ForeignKeyConstraint(['group_id'], ['line_groups.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -65,10 +65,10 @@ def upgrade():
     op.create_table('group_message_summaries',
     sa.Column('id', sa.Integer(), nullable=False, comment='主鍵 ID'),
     sa.Column('group_id', sa.Integer(), nullable=False, comment='所屬群組 ID'),
-    sa.Column('message_time', sa.DateTime(timezone=True), nullable=True, comment='訊息時間'),
+    sa.Column('message_time', sa.DateTime(), nullable=True, comment='訊息時間'),
     sa.Column('message_description', sa.Text(), nullable=True, comment='處理後摘要'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='更新時間'),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='建立時間'),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='更新時間'),
     sa.ForeignKeyConstraint(['group_id'], ['line_groups.id'], ),
     sa.PrimaryKeyConstraint('id')
     )
@@ -80,7 +80,7 @@ def upgrade():
     op.create_table('line_messages',
     sa.Column('id', sa.Integer(), nullable=False, comment='主鍵 ID'),
     sa.Column('group_id', sa.Integer(), nullable=False, comment='所屬群組 ID'),
-    sa.Column('message_time', sa.DateTime(timezone=True), nullable=True, comment='訊息時間'),
+    sa.Column('message_time', sa.DateTime(), nullable=True, comment='訊息時間'),
     sa.Column('message_uid', sa.String(length=32), nullable=True, comment='所屬LINE訊息UID'),
     sa.Column('reply_message_uid', sa.String(length=32), nullable=True, comment='所屬LINE訊息回覆UID'),
     sa.Column('user_name', sa.String(length=64), nullable=True, comment='發送者名稱'),
@@ -92,8 +92,8 @@ def upgrade():
     sa.Column('message_description', sa.Text(), nullable=True, comment='處理後摘要'),
     sa.Column('chunk_id', sa.String(length=100), nullable=True, comment='向量切塊 ID'),
     sa.Column('vector_processed', sa.Boolean(), nullable=False, comment='已送入向量化處理'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='更新時間'),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='建立時間'),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='更新時間'),
     sa.ForeignKeyConstraint(['group_id'], ['line_groups.id'], ondelete='CASCADE'),
     sa.PrimaryKeyConstraint('id')
     )
@@ -103,15 +103,15 @@ def upgrade():
     op.create_table('message_summary_tags',
     sa.Column('id', sa.Integer(), nullable=False, comment='主鍵 ID'),
     sa.Column('group_id', sa.Integer(), nullable=False, comment='所屬群組 ID'),
-    sa.Column('summary_time', sa.DateTime(timezone=True), nullable=True, comment='摘要時間'),
+    sa.Column('summary_time', sa.DateTime(), nullable=True, comment='摘要時間'),
     sa.Column('chunk_summary', sa.Boolean(), nullable=False, comment='是否段摘要已完成'),
     sa.Column('daily_summary', sa.Boolean(), nullable=False, comment='是否日摘要已完成'),
     sa.Column('chunk_current_retry', sa.Integer(), nullable=False, comment='段摘要目前重試次數'),
     sa.Column('daily_current_retry', sa.Integer(), nullable=False, comment='日摘要目前重試次數'),
     sa.Column('chunk_max_retry', sa.Integer(), nullable=False, comment='段摘要最大重試次數'),
     sa.Column('daily_max_retry', sa.Integer(), nullable=False, comment='日摘要最大重試次數'),
-    sa.Column('created_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='建立時間'),
-    sa.Column('updated_at', sa.DateTime(timezone=True), server_default=sa.text('now()'), nullable=False, comment='更新時間'),
+    sa.Column('created_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='建立時間'),
+    sa.Column('updated_at', sa.DateTime(), server_default=sa.text('now()::timestamp'), nullable=False, comment='更新時間'),
     sa.ForeignKeyConstraint(['group_id'], ['line_groups.id'], ),
     sa.PrimaryKeyConstraint('id')
     )

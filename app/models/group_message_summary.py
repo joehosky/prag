@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Optional, TYPE_CHECKING
 
 from sqlalchemy import DateTime, ForeignKey, Index, Integer, Text
+import sqlalchemy as sa
 from sqlalchemy import func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -31,7 +32,7 @@ class GroupMessageSummary(Base):
     )
 
     message_time: Mapped[Optional[datetime]] = mapped_column(
-        DateTime(timezone=True), nullable=True, index=True, comment="訊息時間"
+        DateTime(timezone=False), nullable=True, index=True, comment="訊息時間"
     )
 
     message_description: Mapped[Optional[str]] = mapped_column(
@@ -39,15 +40,15 @@ class GroupMessageSummary(Base):
     )
 
     created_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         comment="建立時間",
     )
     updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
+        DateTime(timezone=False),
         nullable=False,
-        server_default=func.now(),
+        server_default=sa.text("now()::timestamp"),
         onupdate=func.now(),
         index=True,
         comment="更新時間",
