@@ -45,16 +45,23 @@ async def upload_excel(
     msg_svc = MessageService()
 
     # Helper: parse workbook into headers + data rows
-    def _parse_xlsx(file_obj):
+    async def _parse_xlsx(file_obj):
         import openpyxl
+        from io import BytesIO
 
-        wb = openpyxl.load_workbook(filename=file_obj, read_only=True)
+        data = await file_obj.read()
+        wb = openpyxl.load_workbook(filename=BytesIO(data), read_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
         if not rows:
             return [], []
         headers = [str(c).strip() if c is not None else "" for c in rows[0]]
-        data_rows = rows[1:]
+        raw_rows = rows[1:]
+        data_rows = [
+            r
+            for r in raw_rows
+            if any((c is not None and str(c).strip() != "") for c in r)
+        ]
         return headers, data_rows
 
     # Handler for line_message type
@@ -159,7 +166,7 @@ async def upload_excel(
 
     # Parse and dispatch to the appropriate importer
     try:
-        headers, data_rows = _parse_xlsx(file)
+        headers, data_rows = await _parse_xlsx(file)
     except ImportError:
         raise HTTPException(
             status_code=501,
@@ -169,7 +176,7 @@ async def upload_excel(
     if excel_type == ExcelType.LINE_MESSAGE:
         created = _import_line_messages(db, msg_svc, grp, data_rows)
     elif excel_type == ExcelType.QA_MESSAGE:
-        created = _import_qa_messages(db, msg_svc, grp, headers, data_rows)
+        created = _import_qa_messages(db, msg_svc, grp, data_rows)
     else:
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
