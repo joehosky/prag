@@ -47,22 +47,38 @@ async def upload_excel(
     # Helper: parse workbook into headers + data rows
     async def _parse_xlsx(file_obj):
         import openpyxl
-        from io import BytesIO
+        import tempfile
+        import os
 
-        data = await file_obj.read()
-        wb = openpyxl.load_workbook(filename=BytesIO(data), read_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        if not rows:
-            return [], []
-        headers = [str(c).strip() if c is not None else "" for c in rows[0]]
-        raw_rows = rows[1:]
-        data_rows = [
-            r
-            for r in raw_rows
-            if any((c is not None and str(c).strip() != "") for c in r)
-        ]
-        return headers, data_rows
+        tmp_path = None
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp:
+                tmp_path = tmp.name
+                while True:
+                    chunk = await file_obj.read(1024 * 1024)
+                    if not chunk:
+                        break
+                    tmp.write(chunk)
+
+            wb = openpyxl.load_workbook(filename=tmp_path, read_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            if not rows:
+                return [], []
+            headers = [str(c).strip() if c is not None else "" for c in rows[0]]
+            raw_rows = rows[1:]
+            data_rows = [
+                r
+                for r in raw_rows
+                if any((c is not None and str(c).strip() != "") for c in r)
+            ]
+            return headers, data_rows
+        finally:
+            try:
+                if tmp_path and os.path.exists(tmp_path):
+                    os.remove(tmp_path)
+            except Exception:
+                pass
 
     # Handler for line_message type
     def _import_line_messages(db, msg_svc, grp, data_rows):
