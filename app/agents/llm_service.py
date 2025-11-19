@@ -5,7 +5,7 @@ import logging
 import time
 from typing import List, Dict, Any, Optional
 
-import openai
+from openai import OpenAI
 
 from app.core.config import settings
 
@@ -27,9 +27,9 @@ def call_llm(
     api_key = settings.openai_api_key
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured in settings")
-    openai.api_key = api_key
 
     model_name = model or settings.openai_model
+    client = OpenAI(api_key=api_key)
 
     # combine snippets into a single JSON string payload
     try:
@@ -47,26 +47,26 @@ def call_llm(
     backoff = 0.5
     while True:
         try:
-            # openai Python SDK supports request_timeout
-            resp = openai.ChatCompletion.create(
+            resp = client.chat.completions.create(
                 model=model_name,
                 messages=messages,
                 max_tokens=max_tokens,
-                request_timeout=timeout,
+                timeout=timeout,
             )
-            # response format may vary; extract text
-            if "choices" in resp and len(resp.choices) > 0:
-                text = (
-                    resp.choices[0].message.get("content")
-                    if hasattr(resp.choices[0], "message")
-                    else resp.choices[0].get("text")
-                )
-                if text is None:
-                    # try converting whole resp
-                    text = json.dumps(resp)
-                return text
-            # fallback stringify
-            return str(resp)
+
+            # response format: resp.choices -> list with .message.content
+            if hasattr(resp, "choices") and len(resp.choices) > 0:
+                first = resp.choices[0]
+                # choice.message may be a dict-like object
+                msg = getattr(first, "message", None)
+                if msg and getattr(msg, "content", None) is not None:
+                    return msg.content
+                # fallback to text attribute
+                text = getattr(first, "text", None)
+                if text:
+                    return text
+
+            return json.dumps(resp, default=str)
         except Exception as e:
             attempt += 1
             logger.exception("LLM call failed on attempt %d: %s", attempt, e)

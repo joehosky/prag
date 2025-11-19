@@ -4,7 +4,7 @@ import time
 import logging
 from typing import List, Optional
 
-import openai
+from openai import OpenAI
 
 from app.core.config import settings
 
@@ -19,19 +19,17 @@ def generate_embedding(text: str, timeout: int = 60, retries: int = 1) -> List[f
     api_key = settings.openai_api_key
     if not api_key:
         raise RuntimeError("OPENAI_API_KEY is not configured in settings")
-    openai.api_key = api_key
 
     model = settings.openai_embedding_model
+    client = OpenAI(api_key=api_key)
 
     attempt = 0
     backoff = 0.5
     while True:
         try:
-            resp = openai.Embedding.create(
-                input=text, model=model, request_timeout=timeout
-            )
-            # typical response: {'data': [{'embedding': [...]}], ...}
-            if resp and "data" in resp and len(resp.data) > 0:
+            resp = client.embeddings.create(input=text, model=model, timeout=timeout)
+            # response.data is a list of objects with .embedding
+            if resp and getattr(resp, "data", None) and len(resp.data) > 0:
                 emb = resp.data[0].embedding
                 return [float(x) for x in emb]
             raise RuntimeError("No embedding returned from API")
