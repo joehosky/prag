@@ -2,6 +2,8 @@
 LINE Groups Management Router
 """
 
+import logging
+
 from typing import List, Dict
 from enum import Enum as PyEnum
 
@@ -19,7 +21,6 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.group_service import GroupService
 
-import logging
 
 router = APIRouter()
 logger = logging.getLogger(__name__)

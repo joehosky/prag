@@ -42,3 +42,17 @@ class MessageRepository(BaseRepository[LineMessage]):
     def list_by_chunk_id(self, db: Session, chunk_id: str) -> List[LineMessage]:
         stmt = select(LineMessage).where(LineMessage.chunk_id == chunk_id)
         return db.scalars(stmt).all()
+
+    def list_by_time_range(
+        self, db: Session, group_id: int, start_time, end_time
+    ) -> List[LineMessage]:
+        stmt = (
+            select(LineMessage)
+            .where(
+                LineMessage.group_id == group_id,
+                LineMessage.message_time >= start_time,
+                LineMessage.message_time <= end_time,
+            )
+            .order_by(LineMessage.message_time.asc())
+        )
+        return db.scalars(stmt).all()

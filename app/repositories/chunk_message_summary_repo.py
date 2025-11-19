@@ -47,3 +47,31 @@ class ChunkMessageSummaryRepository(BaseRepository[ChunkMessageSummary]):
             ChunkMessageSummary.qdrant_point_id == point_id
         )
         return db.scalars(stmt).one_or_none()
+
+    def find_by_group_and_day(
+        self, db: Session, group_id: int, day_start, day_end
+    ) -> List[ChunkMessageSummary]:
+        """Find all summaries for a group that exactly match the day's start/end."""
+        stmt = select(ChunkMessageSummary).where(
+            ChunkMessageSummary.group_id == group_id,
+            ChunkMessageSummary.start_time == day_start,
+            ChunkMessageSummary.end_time == day_end,
+        )
+        return db.scalars(stmt).all()
+
+    def delete_by_group_and_day(
+        self, db: Session, group_id: int, day_start, day_end
+    ) -> List[ChunkMessageSummary]:
+        """Delete summaries for a group/day and return the deleted objects.
+
+        Caller can inspect returned items to extract Qdrant IDs / ChunkIDs for
+        propagating deletions to external systems.
+        """
+        old = self.find_by_group_and_day(db, group_id, day_start, day_end)
+        for obj in old:
+            db.delete(obj)
+        return old
+
+    def create_summary(self, db: Session, summary_in: dict) -> ChunkMessageSummary:
+        """Convenience wrapper around BaseRepository.create for summaries."""
+        return self.create(db, summary_in)
