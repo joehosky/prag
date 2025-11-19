@@ -17,13 +17,22 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4"
+    openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
 
     # Application
     app_env: str = "development"
     app_host: str = "127.0.0.1"
     app_port: int = 8200
+
+    # Logging
+    log_level: str = "INFO"
+    log_console: bool = True
+    log_console_level: Optional[str] = None
+    log_file: bool = False
+    log_file_level: Optional[str] = None
+    log_dir: str = "logs"
+    log_retention_days: int = 7
 
     # Score Fusion Weights
     score_weight_alpha: float = 0.5  # Cosine similarity

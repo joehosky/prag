@@ -19,14 +19,21 @@ from sqlalchemy.orm import Session
 from app.db.session import get_db
 from app.services.group_service import GroupService
 
+import logging
+
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 
 @router.get("/", response_model=List[GroupResponse])
 def list_groups(db: Session = Depends(get_db)):
+    logger.info("List all group request received: %s", "test")
+
     """List active LINE groups"""
     svc = GroupService()
     groups = svc.list_active(db)
+    logger.debug("Qyert group from DB")
+
     return [GroupResponse.model_validate(g) for g in groups]
 
 

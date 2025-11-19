@@ -115,7 +115,7 @@ QDRANT_API_KEY=
 
 # OpenAI API
 OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4
+OPENAI_MODEL=gpt-4o-mini
 OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # Application
@@ -557,7 +557,7 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4"
+    openai_model: str = "gpt-4o-mini"
     openai_embedding_model: str = "text-embedding-3-small"
 
     # Application
@@ -797,7 +797,7 @@ if __name__ == "__main__":
         # ========== Agent 配置 ==========
         "config/agent_config.yaml": """# Agent Configuration
 agent:
-  model: "gpt-4"
+  model: "gpt-4o-mini"
   temperature: 0.1
   max_iterations: 10
 

@@ -134,6 +134,37 @@ test.bat
 - `tests/` - 測試檔案
 - `docs/` - 文檔
 
+## 🗄️ Logging Configuration
+
+配置 logging 設定（console 與 file）
+
+```
+# 根日誌等級
+LOG_LEVEL=INFO
+
+# 是否輸出到 console (true|false)
+LOG_CONSOLE=true
+# console 專用等級 (若空則使用 LOG_LEVEL)
+LOG_CONSOLE_LEVEL=
+
+# 是否輸出到檔案 (true|false)
+LOG_FILE=true
+# 檔案日誌等級 (若空則使用 LOG_LEVEL)
+LOG_FILE_LEVEL=DEBUG
+
+# 日誌檔案根目錄 (預設: logs)
+LOG_DIR=logs
+
+# 日誌保留天數 (預設: 7)
+LOG_RETENTION_DAYS=14
+```
+
+行為說明：
+
+- 當 `LOG_FILE=true` 時，日誌會寫到 `logs/YYYY-MM-DD/HH.log`（以日期為資料夾、以小時為檔案）。
+- `LOG_RETENTION_DAYS` 決定會刪除多少天以前的日誌資料夾。
+- 建議在開發環境把 `LOG_CONSOLE=true`、`LOG_LEVEL=DEBUG`；在 production 把 `LOG_FILE=true` 並將 `LOG_CONSOLE=false`。
+
 ## 📝 License
 
 MIT License

@@ -7,6 +7,11 @@ import traceback
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from app.core.logging import setup_logging
+
+# Initialize logging from environment before other modules configure loggers
+setup_logging()
+
 from app.api.v1.endpoints import router as api_router
 from app.db.alembic_runner import run_alembic_upgrade
 from app.core.config import settings
