@@ -2,7 +2,15 @@
 Line Messages Upload / Import Router
 """
 
-from fastapi import APIRouter, UploadFile, File, HTTPException, Depends, status
+from fastapi import (
+    APIRouter,
+    UploadFile,
+    File,
+    HTTPException,
+    Depends,
+    status,
+    BackgroundTasks,
+)
 from typing import Optional, List
 from enum import Enum
 from csv import reader as csv_reader
@@ -13,6 +21,9 @@ from datetime import datetime
 from app.db.session import get_db
 from app.services.group_service import GroupService
 from app.services.message_service import MessageService
+from app.services.chunk_message_summary_service import (
+    summarize_group_messages_background,
+)
 
 router = APIRouter()
 
@@ -205,4 +216,42 @@ async def upload_excel(
         "status": "success",
         "message": f"Imported {created} records for type {excel_type.value}",
         "group": {"id": grp.id, "uniid": grp.uniid, "name": grp.name} if grp else None,
+    }
+
+
+@router.post("/summarize", status_code=202)
+async def summarize_messages(
+    background_tasks: BackgroundTasks,
+    group_uniid: str,
+    start_date: str,
+    end_date: str,
+    db: Session = Depends(get_db),
+):
+    """Schedule summarization + embedding + chunking for a group's messages.
+
+    Expects ISO date strings for `start_date` and `end_date`. The task is
+    scheduled with FastAPI `BackgroundTasks` and runs `summarize_group_messages_background`.
+    """
+
+    gsvc = GroupService()
+    grp = gsvc.get_by_uniid(db, group_uniid)
+    if not grp:
+        raise HTTPException(status_code=404, detail="group not found")
+
+    if not start_date or not end_date:
+        raise HTTPException(
+            status_code=400, detail="start_date and end_date are required"
+        )
+
+    # schedule background work (fire-and-forget)
+    background_tasks.add_task(
+        summarize_group_messages_background, grp.id, start_date, end_date
+    )
+
+    return {
+        "status": "accepted",
+        "message": "summarization scheduled",
+        "group": {"id": grp.id, "uniid": grp.uniid, "name": grp.name},
+        "start_date": start_date,
+        "end_date": end_date,
     }
