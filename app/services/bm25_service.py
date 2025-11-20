@@ -41,7 +41,27 @@ logger = logging.getLogger(__name__)
 
 
 def _tokenize(text: str) -> List[str]:
-    # simple whitespace tokenizer; keep lowercase for BM25
+    # Tokenizer that prefers jieba for Chinese text, otherwise falls back to
+    # whitespace-based tokens for Latin scripts or character-level tokens for
+    # CJK text when jieba is unavailable.
+    try:
+        import jieba
+
+        tokens = [t for t in jieba.cut(text) if t and t.strip()]
+        return tokens
+    except Exception:
+        pass
+
+    # fallback: if text contains CJK characters, use character-level tokens
+    # to provide some matching capability for unsegmented languages.
+    try:
+        # detect CJK (basic range)
+        if any("\u4e00" <= ch <= "\u9fff" for ch in text):
+            return [ch for ch in text if ch.strip()]
+    except Exception:
+        pass
+
+    # default whitespace tokenizer (lowercased)
     return [t for t in text.lower().split() if t]
 
 
