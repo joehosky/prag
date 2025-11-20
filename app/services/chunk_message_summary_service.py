@@ -6,7 +6,10 @@ from fastapi import BackgroundTasks
 
 from app.repositories.chunk_message_summary_repo import ChunkMessageSummaryRepository
 from app.models.chunk_message_summary import ChunkMessageSummary
-from app.services.bm25_service import index_chunks_for_date_range_background
+from app.services.bm25_service import (
+    index_chunks_for_date_range_background,
+    BM25Service,
+)
 from app.repositories.group_repo import GroupRepository
 from app.repositories.message_repo import MessageRepository
 from app.agents.llm_service import call_llm, parse_llm_topics
@@ -220,6 +223,22 @@ def summarize_group_messages_background(
             # delete DB rows
             chunk_repo.delete_by_group_and_day(db, group_id, day_start, day_end)
             db.commit()
+
+            # remove old docs from BM25 index (best-effort) so reindex starts clean
+            try:
+                if chunk_ids:
+                    bm25 = BM25Service()
+                    for cid in chunk_ids:
+                        try:
+                            bm25.delete_chunk(cid)
+                        except Exception:
+                            logger.exception("BM25: failed to delete old doc %s", cid)
+            except Exception:
+                logger.exception(
+                    "BM25: unexpected error while cleaning old docs for group %s day %s",
+                    group_id,
+                    day,
+                )
 
             # create new summaries
             success_all = True

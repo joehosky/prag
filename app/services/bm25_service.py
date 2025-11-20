@@ -74,7 +74,7 @@ class BM25Service:
                     # ensure structure is doc_id -> (content, payload)
                     self.docs = docs
                     self._rebuild_index()
-                    logger.info(
+                    logger.debug(
                         "BM25 index loaded from %s (docs=%d)",
                         self.index_path,
                         len(self.docs),
@@ -114,7 +114,7 @@ class BM25Service:
                 del self.docs[doc_id]
                 self._rebuild_index()
                 self._persist()
-                logger.info("BM25: deleted doc %s", doc_id)
+                logger.debug("BM25: deleted doc %s", doc_id)
             else:
                 logger.debug("BM25: delete called for missing doc %s", doc_id)
         except Exception:
@@ -126,7 +126,7 @@ class BM25Service:
             self.docs[doc_id] = (content, payload)
             self._rebuild_index()
             self._persist()
-            logger.info("BM25: indexed doc %s", doc_id)
+            logger.debug("BM25: indexed doc %s", doc_id)
         except Exception:
             logger.exception("BM25: failed to index doc %s", doc_id)
 
@@ -174,7 +174,7 @@ class BM25Service:
                 )
                 failed += 1
         stats = {"indexed": indexed, "failed": failed, "candidates": len(chunks)}
-        logger.info(
+        logger.debug(
             "BM25 indexing finished for group %s indexed:%d failed:%d candidates:%d",
             group_id,
             indexed,

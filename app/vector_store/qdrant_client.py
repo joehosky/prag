@@ -43,7 +43,7 @@ class QdrantService:
                 self.client.upsert(
                     collection_name=self.collection, points=point_structs
                 )
-                logger.info(
+                logger.debug(
                     "Qdrant: upserted %d points to collection %s",
                     len(point_structs),
                     self.collection,
@@ -61,7 +61,7 @@ class QdrantService:
             self.client.delete(
                 collection_name=self.collection, points_selector=selector
             )
-            logger.info(
+            logger.debug(
                 "Qdrant: deleted %d points from collection %s",
                 len(ids),
                 self.collection,

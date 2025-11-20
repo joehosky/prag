@@ -185,6 +185,10 @@ def setup_logging() -> None:
     # Reduce overly verbose third-party loggers by default
     logging.getLogger("sqlalchemy").setLevel(logging.WARNING)
     logging.getLogger("alembic").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("qdrant").setLevel(logging.WARNING)
+    logging.getLogger("qdrant_client").setLevel(logging.WARNING)
 
 
 __all__ = ["setup_logging", "HourlyFileHandler"]
