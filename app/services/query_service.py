@@ -6,6 +6,7 @@ import logging
 import asyncio
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
+import os
 
 from app.agents.llm_service import analyze_query
 from app.services.embedding_service import generate_embedding
@@ -46,8 +47,26 @@ class QueryService:
 
         # 1) LLM analysis
         now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        analysis = analyze_query(question, history=None, now_str=now)
-        resolved = analysis.get("resolvedQuery") or question
+        # analysis = analyze_query(question, history=None, now_str=now)
+        # resolved = analysis.get("resolvedQuery") or question
+        # keywords = analysis.get("keywords") or []
+
+        # ---- DEBUG INJECTION (temporary) ----
+        # Set environment variable DEBUG_QUERY_INJECT=1 to override the LLM
+        # analysis with fixed test values for debugging without calling the LLM.
+        # PowerShell example: $env:DEBUG_QUERY_INJECT = '1'
+        analysis = {
+            "queryType": "QueryTypeExact",
+            "startTime": None,
+            "endTime": None,
+            "resolvedQuery": "包聖嬌案主 前測及設備教學回報",
+            "keywords": [
+                {"text": "包聖嬌", "required": True},
+                {"text": "前測", "required": True},
+                {"text": "設備教學回報", "required": True},
+            ],
+        }
+        resolved = analysis.get("resolvedQuery")
         keywords = analysis.get("keywords") or []
 
         # 2) embedding for query
