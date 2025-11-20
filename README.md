@@ -68,7 +68,15 @@
 
 4. **初始化資料庫（使用 Alembic 管理 schema，建議流程）**
 
-   使用 Alembic 來管理資料表結構（推薦）。以下為開發 / 本機環境常用步驟：
+   ```powershell
+   # 初始化 PostgreSQL 表格
+   python scripts\init_db.py
+
+   # 初始化 Qdrant 集合
+   python scripts\init_qdrant.py
+   ```
+
+   使用 Alembic 來管理資料表結構：
 
    - 產生 migration 檔（根據目前的 SQLAlchemy models，自動產生變更草稿）：
 
@@ -87,6 +95,8 @@
    ```
 
    - 若你在本機或測試環境只是要快速建立表，也可以在暫時情況下使用 `create_all()`（不推薦作為長期做法）。
+
+   - 如有建立新的 model，記得加入該 model 到 models 目錄下的 **init**.py，以免 relationship 無法正確建立。
 
 5. **啟動服務**
 
