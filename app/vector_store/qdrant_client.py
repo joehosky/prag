@@ -57,8 +57,10 @@ class QdrantService:
         try:
             if not ids:
                 return
-            # QdrantClient.delete accepts collection_name and list of ids
-            self.client.delete(collection_name=self.collection, points=ids)
+            selector = qmodels.PointIdsList(points=ids)
+            self.client.delete(
+                collection_name=self.collection, points_selector=selector
+            )
             logger.info(
                 "Qdrant: deleted %d points from collection %s",
                 len(ids),
