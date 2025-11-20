@@ -17,7 +17,7 @@ from app.services.embedding_service import generate_embedding
 from app.vector_store.qdrant_client import QdrantService
 import uuid
 import logging
-from datetime import datetime, time as dt_time
+from datetime import datetime, time as dt_time, timedelta, timezone
 
 logger = logging.getLogger(__name__)
 
@@ -104,8 +104,11 @@ def summarize_group_messages_background(
     """
     db = SessionLocal()
     try:
-        sdt = _parse_datetime(start_date)
-        edt = _parse_datetime(end_date)
+        sdt = datetime.combine(_parse_datetime(start_date).date(), dt_time.min)
+        # use milliseconds precision for end-of-day to match stored model format
+        edt = datetime.combine(
+            _parse_datetime(end_date).date(), dt_time(23, 59, 59, 999000)
+        )
 
         # repositories
         msg_repo = MessageRepository()
@@ -134,10 +137,10 @@ def summarize_group_messages_background(
         # get group prompt
         grp = grp_repo.get(db, group_id)
         base_prompt = (
-            "Your task is to: Organize the input chat messages into detailed explanations grouped by topic (maximum of 15 sections) === Rules ==="
+            "你的任務是：將輸入的聊天訊息，依照主題進行整理與歸納，並輸出為「詳細說明」的形式。請依照主題分成最多 15 個章節（sections） === 規則 ==="
             + grp.chunk_summary_prompt
             if grp and grp.chunk_summary_prompt
-            else "Your task is to: Organize the input chat messages into detailed explanations grouped by topic (maximum of 15 sections)"
+            else "你的任務是：將輸入的聊天訊息，依照主題進行整理與歸納，並輸出為「詳細說明」的形式。請依照主題分成最多 15 個章節（sections）"
         )
 
         # input/output spec (concise)
@@ -148,9 +151,8 @@ def summarize_group_messages_background(
 
         total = 0
         for day, msgs in days.items():
-            # day start/end
             day_start = datetime.combine(day, dt_time.min)
-            day_end = datetime.combine(day, dt_time.max)
+            day_end = datetime.combine(day, dt_time(23, 59, 59, 999000))
 
             # split into units of up to 20 messages
             objs = msgs
@@ -178,7 +180,7 @@ def summarize_group_messages_background(
                     )
 
                 # construct prompt (include input/output spec)
-                prompt = f"{base_prompt}\n\n=== 輸入格式(JSON) ===\n{input_spec}\n\n=== 輸出格式(JSON) ===\n{output_spec}"
+                prompt = f"{base_prompt}\n\n=== 輸入格式(JSON) ===\n{input_spec}\n\n=== 輸出格式(JSON) ===\n{output_spec}，回應內容使用中文描述"
 
                 try:
                     raw = call_llm(prompt, snippets, timeout=120, retries=2)
@@ -205,7 +207,6 @@ def summarize_group_messages_background(
             old = chunk_repo.find_by_group_and_day(db, group_id, day_start, day_end)
             qdrant_ids = [o.qdrant_point_id for o in old if o.qdrant_point_id]
             chunk_ids = [o.chunk_id for o in old if o.chunk_id]
-            # try to delete old points from Qdrant (best-effort) then delete DB rows
             try:
                 if qdrant_ids:
                     QdrantService().delete_points(qdrant_ids)
@@ -267,13 +268,19 @@ def summarize_group_messages_background(
                                 continue
 
                             pid = str(uuid.uuid4())
+                            tz = timezone(timedelta(hours=8))
+                            date_str = day_start.date().isoformat()
+                            start_iso = day_start.replace(tzinfo=tz).isoformat()
+                            end_iso = day_end.replace(tzinfo=tz).isoformat()
+                            created_iso = datetime.now(tz).isoformat()
+
                             payload_meta = {
+                                "created_at": created_iso,
+                                "date": date_str,
+                                "end_time": end_iso,
                                 "group_id": group_id,
+                                "start_time": start_iso,
                                 "summary_id": item.id,
-                                "chunk_index": i,
-                                "start_time": day_start.isoformat(),
-                                "end_time": day_end.isoformat(),
-                                "created_at": datetime.utcnow().isoformat(),
                             }
                             points.append(
                                 {"id": pid, "vector": vec, "payload": payload_meta}

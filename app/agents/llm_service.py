@@ -61,10 +61,6 @@ def call_llm(
                 msg = getattr(first, "message", None)
                 if msg and getattr(msg, "content", None) is not None:
                     return msg.content
-                # fallback to text attribute
-                text = getattr(first, "text", None)
-                if text:
-                    return text
 
             return json.dumps(resp, default=str)
         except Exception as e:

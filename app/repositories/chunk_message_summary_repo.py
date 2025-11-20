@@ -62,11 +62,7 @@ class ChunkMessageSummaryRepository(BaseRepository[ChunkMessageSummary]):
     def delete_by_group_and_day(
         self, db: Session, group_id: int, day_start, day_end
     ) -> List[ChunkMessageSummary]:
-        """Delete summaries for a group/day and return the deleted objects.
-
-        Caller can inspect returned items to extract Qdrant IDs / ChunkIDs for
-        propagating deletions to external systems.
-        """
+        """Delete summaries for a group/day and return the deleted objects."""
         old = self.find_by_group_and_day(db, group_id, day_start, day_end)
         for obj in old:
             db.delete(obj)
