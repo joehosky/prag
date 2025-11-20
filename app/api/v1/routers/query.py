@@ -10,7 +10,7 @@ router = APIRouter()
 
 
 class QueryRequest(BaseModel):
-    group_id: str
+    group_uniid: str
     question: str
     search_type: str = "hybrid"
     top_k: int = 50
@@ -24,10 +24,17 @@ class QueryResponse(BaseModel):
 
 @router.post("/", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
-    """Execute RAG query"""
-    # TODO: Implement query logic
-    return QueryResponse(
-        answer="This is a placeholder response for your query.",
-        confidence=0.95,
-        metadata={"query": request.question},
-    )
+    from app.services.query_service import QueryService
+
+    svc = QueryService()
+    try:
+        result = await svc.query_group(
+            request.group_uniid, request.question, request.top_k, request.search_type
+        )
+        return QueryResponse(
+            answer=result.get("answer", ""),
+            confidence=float(result.get("confidence", 0.0)),
+            metadata=result.get("metadata"),
+        )
+    except Exception as e:
+        return QueryResponse(answer="", confidence=0.0, metadata={"error": str(e)})

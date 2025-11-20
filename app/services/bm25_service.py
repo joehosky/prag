@@ -183,6 +183,46 @@ class BM25Service:
         )
         return stats
 
+    def search(
+        self, query: str, top_k: int = 30, group_id: int | None = None
+    ) -> List[Tuple[str, float]]:
+        """Search BM25 index for `query`. If `group_id` is provided, filter
+        documents whose payload group_id matches.
+
+        Returns list of tuples (doc_id, score) sorted desc by score.
+        """
+        try:
+            if not self._bm25:
+                return []
+
+            # Build filtered lists
+            ids = []
+            contents = []
+            for doc_id, (content, payload) in self.docs.items():
+                if group_id is not None:
+                    try:
+                        if int(payload.get("group_id", 0)) != int(group_id):
+                            continue
+                    except Exception:
+                        continue
+                ids.append(doc_id)
+                contents.append(content)
+
+            if not contents:
+                return []
+
+            # Build a temporary BM25 index for the filtered docs (safe and simple)
+            tokenized = [_tokenize(c) for c in contents]
+            bm = BM25Okapi(tokenized)
+            q_tokens = _tokenize(query)
+            scores = bm.get_scores(q_tokens)
+            pairs = list(zip(ids, scores))
+            pairs.sort(key=lambda x: x[1], reverse=True)
+            return pairs[:top_k]
+        except Exception:
+            logger.exception("BM25 search failed")
+            return []
+
 
 def index_chunks_for_date_range_background(
     group_id: int, start_date: str, end_date: str

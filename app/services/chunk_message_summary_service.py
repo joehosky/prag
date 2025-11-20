@@ -300,6 +300,7 @@ def summarize_group_messages_background(
                                 "group_id": group_id,
                                 "start_time": start_iso,
                                 "summary_id": item.id,
+                                "chunk_id": item.chunk_id,
                             }
                             points.append(
                                 {"id": pid, "vector": vec, "payload": payload_meta}
