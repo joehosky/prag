@@ -78,6 +78,7 @@ class QueryService:
         )
 
         # 2) embedding for query
+        # ---- DEBUG INJECTION (temporary) ----
         # try:
         #     qvec = await asyncio.to_thread(generate_embedding, resolved)
         # except Exception:
