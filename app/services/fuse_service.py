@@ -43,7 +43,7 @@ def fuse_scores(
     score_map: Dict[int, Dict] = {}
     for i, cid in enumerate(q_ids):
         if cid not in score_map:
-            score_map[cid] = {"chunk_id": cid, "q": 0.0, "b": 0.0, "k": 0.0}
+            score_map[cid] = {"id": cid, "q": 0.0, "b": 0.0, "k": 0.0}
         if i < len(nq):
             score_map[cid]["q"] = nq[i]
         if i < len(nb):
@@ -61,7 +61,7 @@ def fuse_scores(
         final = alpha * sc["q"] + beta * sc["b"] + gamma * sc["k"] + delta * recency
         results.append(
             {
-                "chunk_id": cid,
+                "id": cid,
                 "q": sc["q"],
                 "b": sc["b"],
                 "k": sc["k"],
@@ -104,10 +104,10 @@ def mmr(
         for i, cand in enumerate(remaining):
             relevance = cand.get("final", 0.0)
             sim_max = 0.0
-            vec = chunk_vectors.get(cand["chunk_id"])
+            vec = chunk_vectors.get(cand["id"])
             if vec and selected:
                 for s in selected:
-                    svec = chunk_vectors.get(s["chunk_id"])
+                    svec = chunk_vectors.get(s["id"])
                     if svec:
                         sim = cosine(vec, svec)
                         if sim > sim_max:

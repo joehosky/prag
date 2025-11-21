@@ -189,6 +189,33 @@ def setup_logging() -> None:
     logging.getLogger("openai").setLevel(logging.WARNING)
     logging.getLogger("qdrant").setLevel(logging.WARNING)
     logging.getLogger("qdrant_client").setLevel(logging.WARNING)
+    logging.getLogger("jieba").setLevel(logging.WARNING)
+    logging.getLogger("rank_bm25").setLevel(logging.WARNING)
+
+    # Try to silently initialize jieba to avoid noisy stdout/stderr messages
+    try:
+        import importlib
+        import contextlib
+
+        spec = importlib.util.find_spec("jieba")
+        if spec is not None:
+            with open(os.devnull, "w") as _devnull:
+                try:
+                    with (
+                        contextlib.redirect_stdout(_devnull),
+                        contextlib.redirect_stderr(_devnull),
+                    ):
+                        jieba = importlib.import_module("jieba")
+                        # call initialize() if available to ensure dictionaries are loaded
+                        try:
+                            if hasattr(jieba, "initialize"):
+                                jieba.initialize()
+                        except Exception:
+                            pass
+                except Exception:
+                    pass
+    except Exception:
+        pass
 
 
 __all__ = ["setup_logging", "HourlyFileHandler"]
