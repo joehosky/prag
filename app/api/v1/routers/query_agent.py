@@ -70,8 +70,6 @@ async def query_agent(request: QueryRequest):
     metadata: Dict[str, Any] = {"raw": out}
 
     if isinstance(out, dict):
-        # If agent returned a QueryService-like dict
-        # Also support agents that return their result under an `agent_output` key
         candidate = out
         if "agent_output" in out and isinstance(out["agent_output"], dict):
             candidate = out["agent_output"]
@@ -81,8 +79,6 @@ async def query_agent(request: QueryRequest):
             confidence = float(candidate.get("confidence", 0.0))
             metadata = candidate.get("metadata", out.get("metadata", metadata))
         else:
-            # If candidate contains agent-style messages (langchain AIMessage objects or dicts),
-            # try to extract the last AI message content as the answer.
             msgs = candidate.get("messages") if isinstance(candidate, dict) else None
             if not msgs and isinstance(out, dict):
                 msgs = out.get("messages")

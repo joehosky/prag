@@ -174,7 +174,6 @@ class LangChainAgent:
             )
             raise
 
-        # Normalize/unwrap agent output into a QueryService-like shape
         answer = ""
         confidence = 0.0
         metadata: Dict[str, Any] = {"raw": {"agent_output": out}}
