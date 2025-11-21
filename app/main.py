@@ -3,14 +3,15 @@
 from contextlib import asynccontextmanager
 import logging
 import traceback
+import sys
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
 from app.core.logging import setup_logging
 
-# Initialize logging from environment before other modules configure loggers
 setup_logging()
+logging.getLogger().info("Starting app with python: %s", sys.executable)
 
 from app.api.v1.endpoints import router as api_router
 from app.db.alembic_runner import run_alembic_upgrade
