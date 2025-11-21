@@ -79,28 +79,23 @@ async def query_agent(request: QueryRequest):
         if candidate.get("answer") or candidate.get("confidence"):
             answer = candidate.get("answer", "")
             confidence = float(candidate.get("confidence", 0.0))
-            # Prefer metadata from candidate, fall back to top-level out
             metadata = candidate.get("metadata", out.get("metadata", metadata))
         else:
             # If candidate contains agent-style messages (langchain AIMessage objects or dicts),
             # try to extract the last AI message content as the answer.
             msgs = candidate.get("messages") if isinstance(candidate, dict) else None
             if not msgs and isinstance(out, dict):
-                # fallback: top-level out may contain messages
                 msgs = out.get("messages")
 
             if msgs:
-                # iterate reversed to find the last non-empty content
                 for m in reversed(msgs):
                     content = None
                     if isinstance(m, dict):
                         content = m.get("content")
                     else:
-                        # object: try attribute access
                         content = getattr(m, "content", None)
                     if isinstance(content, str) and content.strip():
                         answer = content
-                        # try to pull confidence from candidate.raw if present
                         try:
                             confidence = float(
                                 candidate.get("raw", {}).get("confidence", confidence)

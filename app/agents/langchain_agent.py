@@ -1,13 +1,11 @@
-"""LangChain 1.0.x agent runner (strict implementation).
+"""LangChain 1.0.x agent runner
 
-This module provides a single, clean `LangChainAgent` definition and
-intentionally does not include fallback logic. It assumes LangChain 1.0.x
-APIs are available in the environment.
+This module provides a single, clean `LangChainAgent` definition with
+proper parameter binding to tools.
 """
 
 from __future__ import annotations
 
-import asyncio
 import inspect
 import logging
 from typing import Any, Dict, List, Optional
@@ -25,12 +23,11 @@ try:
 except Exception as exc:
     raise ImportError(
         "langchain 1.0.x and provider packages (langchain_openai, langgraph) are required for LangChainAgent.\n"
-        "Install them or provide an `llm_instance` when constructing LangChainAgent."
     ) from exc
 
 
 class LangChainAgent:
-    """Strict LangChain 1.0.x agent wrapper.
+    """Strict LangChain 1.0.x agent wrapper with proper tool parameter binding.
 
     Parameters
     - model: model name passed to LangChain's OpenAI when no `llm_instance` is provided.
@@ -61,7 +58,12 @@ class LangChainAgent:
         use_agent: bool = True,
         analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Run the LangChain agent and return the agent output."""
+        """Run the LangChain agent and return the agent output.
+
+        This method creates dynamically bound tools that capture the context
+        parameters (group_uniid, start_time, end_time, top_k, analysis) so
+        the LLM only needs to provide the question parameter when calling tools.
+        """
 
         if analysis is None:
             from app.agents.llm_service import analyze_query
@@ -74,7 +76,38 @@ class LangChainAgent:
             )
             analysis = analyze_query(question, history=None, now_str=now)
 
-        tools: List[Any] = [query_tool, split_range]
+        try:
+            from langchain_core.tools import tool
+        except ImportError:
+            from langchain.tools import tool
+
+        @tool
+        async def query_messages(question_text: str) -> Dict[str, Any]:
+            """Search and retrieve relevant LINE messages based on the question.
+
+            This tool searches through the LINE group's message history to find
+            relevant messages that match the given question or search query.
+
+            Args:
+                question_text: The search query or question to find relevant messages.
+                             This should be a natural language question or keywords.
+
+            Returns:
+                A dictionary containing:
+                - items: List of matched messages with chunk_id, summary, and score
+                - metadata: Additional information about the search
+                - raw: Raw query service results
+            """
+            return await query_tool(
+                question=question_text,
+                group_uniid=group_uniid,
+                start_time=start_time,
+                end_time=end_time,
+                top_k=top_k,
+                analysis=analysis,
+            )
+
+        tools: List[Any] = [query_messages, split_range]
 
         if self.llm_instance is not None:
             llm_obj = self.llm_instance
@@ -98,7 +131,7 @@ class LangChainAgent:
             self.model,
             self.use_memory,
             create_kwargs,
-            [getattr(t, "__name__", str(t)) for t in tools],
+            [getattr(t, "name", getattr(t, "__name__", str(t))) for t in tools],
         )
 
         try:
@@ -107,70 +140,36 @@ class LangChainAgent:
             logger.exception("Failed to create agent: %s", e)
             raise
 
-        ctx = {
-            "group_uniid": group_uniid,
-            "start_time": start_time,
-            "end_time": end_time,
-            "top_k": top_k,
-            "analysis": analysis,
-        }
-
-        # Call agent: prefer `invoke`, then `run`, then callable. Log payload/result for debugging.
         try:
-            # Prefer async invocation API if available (langgraph agents expose `ainvoke`)
-            if hasattr(agent, "ainvoke"):
-                ainvoke_fn = getattr(agent, "ainvoke")
-                payload = {"messages": [{"role": "user", "content": question}], **ctx}
-                configurable = {"configurable": {"thread_id": group_uniid}}
-                logger.debug(
-                    "Calling agent.ainvoke payload=%s configurable=%s",
-                    payload,
-                    configurable,
-                )
-                out = await ainvoke_fn(payload, configurable)
-            elif hasattr(agent, "invoke"):
-                invoke_fn = getattr(agent, "invoke")
-                payload = {"messages": [{"role": "user", "content": question}], **ctx}
-                configurable = {"configurable": {"thread_id": group_uniid}}
-                logger.debug(
-                    "Calling agent.invoke payload=%s configurable=%s",
-                    payload,
-                    configurable,
-                )
-                result = invoke_fn(payload, configurable)
-                logger.debug("agent.invoke returned (type=%s)", type(result))
-                if inspect.isawaitable(result):
-                    out = await result
-                else:
-                    out = result
-            elif hasattr(agent, "run"):
-                run_fn = getattr(agent, "run")
-                logger.debug("Calling agent.run input=%s context=%s", question, ctx)
-                result = run_fn(input=question, context=ctx)
-                logger.debug("agent.run returned (type=%s)", type(result))
-                if inspect.isawaitable(result):
-                    out = await result
-                else:
-                    out = result
-            elif callable(agent):
-                logger.debug(
-                    "Calling agent callable with input=%s context=%s", question, ctx
-                )
-                result = agent(input=question, context=ctx)
-                logger.debug("callable agent returned (type=%s)", type(result))
-                if inspect.isawaitable(result):
-                    out = await result
-                else:
-                    out = result
+            sys_msg = (
+                f"You are helping search LINE group messages for group {group_uniid}. "
+            )
+            sys_msg += (
+                "Use the query_messages tool to search for relevant messages based on the user's question. "
+                "The tool requires only the search question - all other context is already configured."
+            )
+
+            payload = {
+                "messages": [
+                    {"role": "system", "content": sys_msg},
+                    {"role": "user", "content": question},
+                ],
+            }
+            configurable = {"configurable": {"thread_id": group_uniid}}
+
+            result = await agent.ainvoke(payload, configurable)
+            logger.debug("agent.invoke returned (type=%s)", type(result))
+
+            if inspect.isawaitable(result):
+                out = await result
             else:
-                raise RuntimeError("Agent object has no callable/invoke/run method")
+                out = result
+
         except Exception as exc:
-            # Log full context to help debugging tools that behave differently sync/async
             logger.exception(
-                "Agent invocation failed. question=%s group_uniid=%s ctx=%s error=%s",
+                "Agent invocation failed. question=%s group_uniid=%s error=%s",
                 question,
                 group_uniid,
-                ctx,
                 exc,
             )
             raise
@@ -181,43 +180,24 @@ class LangChainAgent:
         metadata: Dict[str, Any] = {"raw": {"agent_output": out}}
 
         candidate = out
-        if (
-            isinstance(out, dict)
-            and "agent_output" in out
-            and isinstance(out["agent_output"], dict)
-        ):
-            candidate = out["agent_output"]
-
         if isinstance(candidate, dict):
-            # Prefer explicit answer/confidence fields
-            if candidate.get("answer") or candidate.get("confidence"):
-                answer = candidate.get("answer", "")
-                try:
-                    confidence = float(candidate.get("confidence", 0.0))
-                except Exception:
-                    confidence = 0.0
-                metadata = candidate.get("metadata", metadata)
-            else:
-                # Try to extract from messages: last AI message content
-                msgs = candidate.get("messages") or out.get("messages")
-                if msgs:
-                    for m in reversed(msgs):
-                        content = None
-                        if isinstance(m, dict):
-                            content = m.get("content")
-                        else:
-                            content = getattr(m, "content", None)
-                        if isinstance(content, str) and content.strip():
-                            answer = content
-                            try:
-                                confidence = float(
-                                    candidate.get("raw", {}).get(
-                                        "confidence", confidence
-                                    )
-                                )
-                            except Exception:
-                                pass
-                            break
+            msgs = candidate.get("messages")
+            if msgs:
+                for m in reversed(msgs):
+                    content = None
+                    if isinstance(m, dict):
+                        content = m.get("content")
+                    else:
+                        content = getattr(m, "content", None)
+                    if isinstance(content, str) and content.strip():
+                        answer = content
+                        try:
+                            confidence = float(
+                                candidate.get("raw", {}).get("confidence", confidence)
+                            )
+                        except Exception:
+                            pass
+                        break
 
         result: Dict[str, Any] = {
             "answer": answer or "",

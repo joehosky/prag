@@ -302,7 +302,7 @@ class QueryService:
 
             mmr_selected = [m for m in mmr_selected if (m.get("final", 0.0) >= 0.3)]
 
-            logger.info(
+            logger.debug(
                 "query_group:mmr_selected count=%d items=%s",
                 len(mmr_selected),
                 mmr_selected,

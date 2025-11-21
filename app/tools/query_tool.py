@@ -28,31 +28,21 @@ async def query_tool(
     """
     svc = QueryService()
 
-    # Pre-filter chunk ids using DB time-range lookup (if provided)
-    allowed_chunk_ids = db_lookup_chunks(group_uniid, start_time, end_time)
-
-    # QueryService.query_group is async; pass through analysis if provided
     result = await svc.query_group(
         group_uniid=group_uniid, question=question, top_k=top_k, analysis=analysis
     )
 
-    # Normalize to expected agent-friendly structure
     items = []
     meta = result.get("metadata", {})
-    # metadata.scores and candidates correspond to mmr outputs
-    # We use the returned scores and the original candidates to build items
     candidates = meta.get("candidates", [])
     scores = meta.get("scores", [])
     summaries = []
-    # The answer is a join of results; split by double newlines to approximate items
+
     answer = result.get("answer", "")
     if answer:
         summaries = [s.strip() for s in answer.split("\n\n") if s.strip()]
 
     for idx, cid in enumerate(candidates):
-        # If DB prefilter returned ids, skip any candidate not in allowed set
-        if allowed_chunk_ids and str(cid) not in set(map(str, allowed_chunk_ids)):
-            continue
         items.append(
             {
                 "chunk_id": cid,
