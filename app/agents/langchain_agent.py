@@ -1,37 +1,55 @@
-"""LangChain 1.0.x agent PoC runner.
+"""LangChain 1.0.x agent runner (strict implementation).
 
-This PoC tries to use LangChain's `create_agent` when available. For
-reliability in environments without the exact LangChain API, a simple
-fallback orchestrator is provided that uses the tools implemented under
-`app.tools`.
-
-This module implements an async `run` function that returns aggregated
-results for a user query.
+This module provides a single, clean `LangChainAgent` definition and
+intentionally does not include fallback logic. It assumes LangChain 1.0.x
+APIs are available in the environment.
 """
 
 from __future__ import annotations
 
 import asyncio
+import inspect
 import logging
 from typing import Any, Dict, List, Optional
 
+from app.core.config import settings
 from app.tools.query_tool import query_tool
 from app.tools.split_range_tool import split_range
-from app.tools.aggregate_tool import aggregate_results
 
 logger = logging.getLogger("app.agents.langchain_agent")
 
+try:
+    from langchain.agents import create_agent
+    from langchain_openai import ChatOpenAI
+    from langgraph.checkpoint.memory import InMemorySaver
+except Exception as exc:
+    raise ImportError(
+        "langchain 1.0.x and provider packages (langchain_openai, langgraph) are required for LangChainAgent.\n"
+        "Install them or provide an `llm_instance` when constructing LangChainAgent."
+    ) from exc
+
 
 class LangChainAgent:
+    """Strict LangChain 1.0.x agent wrapper.
+
+    Parameters
+    - model: model name passed to LangChain's OpenAI when no `llm_instance` is provided.
+    - llm_instance: optional pre-initialized LLM object (preferred).
+    - use_memory: attach MemorySaver when True.
+    - agent_kwargs: forwarded to `create_agent`.
+    """
+
     def __init__(
         self,
         model: str = "gpt-4o-mini",
-        max_steps: int = 6,
-        max_span_days: int = 7,
+        llm_instance: Optional[Any] = None,
+        use_memory: bool = False,
+        agent_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.model = model
-        self.max_steps = max_steps
-        self.max_span_days = max_span_days
+        self.llm_instance = llm_instance
+        self.use_memory = use_memory
+        self.agent_kwargs = agent_kwargs or {}
 
     async def run(
         self,
@@ -43,118 +61,172 @@ class LangChainAgent:
         use_agent: bool = True,
         analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Run agent PoC. If LangChain 1.0.x is available it will attempt to
-        construct an agent; otherwise fallback to simple orchestrator.
-        """
-        # Try to import LangChain create_agent API (best-effort)
-        try:
-            from langchain.agents import create_agent  # type: ignore
-            from langchain.memory import MemorySaver  # type: ignore
-        except Exception:
-            create_agent = None
-            MemorySaver = None
+        """Run the LangChain agent and return the agent output."""
 
-        # If caller didn't provide an analysis dict, attempt to produce one
         if analysis is None:
-            try:
-                from app.agents.llm_service import analyze_query
+            from app.agents.llm_service import analyze_query
 
-                now = (
-                    __import__("datetime")
-                    .datetime.now()
-                    .astimezone()
-                    .strftime("%Y-%m-%d %H:%M:%S")
-                )
-                analysis = analyze_query(question, history=None, now_str=now)
-            except Exception:
-                analysis = None
+            now = (
+                __import__("datetime")
+                .datetime.now()
+                .astimezone()
+                .strftime("%Y-%m-%d %H:%M:%S")
+            )
+            analysis = analyze_query(question, history=None, now_str=now)
 
-        if use_agent and create_agent:
-            try:
-                # Build simple tool wrappers for LangChain
-                # Note: create_agent usage varies by LangChain version; we
-                # pass model name and callable tools as a simple PoC.
-                tools = [
-                    {
-                        "name": "query_tool",
-                        "func": query_tool,
-                        "description": "Run retrieval for a question and group_uniid",
-                    },
-                    {
-                        "name": "split_range",
-                        "func": split_range,
-                        "description": "Split a date range into windows",
-                    },
-                ]
+        tools: List[Any] = [query_tool, split_range]
 
-                # Pass analysis in the agent context so tools/agent can use it
-                agent = create_agent(model=self.model, tools=tools)
-
-                # run agent in an async context if supported
-                if asyncio.iscoroutinefunction(agent.run):
-                    out = await agent.run(
-                        input=question,
-                        context={
-                            "group_uniid": group_uniid,
-                            "start_time": start_time,
-                            "end_time": end_time,
-                            "top_k": top_k,
-                            "analysis": analysis,
-                        },
-                    )
-                else:
-                    # sync fallback
-                    loop = asyncio.get_running_loop()
-                    out = await loop.run_in_executor(None, lambda: agent.run(question))
-
-                return {"agent_output": out}
-            except Exception:
-                logger.exception("LangChain agent failed; falling back to orchestrator")
-
-        # Fallback simple orchestrator: if time range is provided and large,
-        # split into windows and call query_tool for each window in parallel.
-        # Determine windows: prefer analysis start/end if present
-        use_start = start_time
-        use_end = end_time
-        if analysis:
-            use_start = analysis.get("startTime") or use_start
-            use_end = analysis.get("endTime") or use_end
-
-        if use_start and use_end:
-            windows = split_range(use_start, use_end, max_span_days=self.max_span_days)
+        if self.llm_instance is not None:
+            llm_obj = self.llm_instance
         else:
-            windows = [(use_start, use_end)]
-
-        results: List[Dict[str, Any]] = []
-        sem = asyncio.Semaphore(self.max_steps)
-
-        async def _call_window(q, g, s, e):
-            async with sem:
-                # Note: query_tool ignores start/end for now; kept for future
-                return await query_tool(
-                    q, g, start_time=s, end_time=e, top_k=top_k, analysis=analysis
+            if not settings.openai_api_key:
+                raise RuntimeError(
+                    "OpenAI API key not configured in settings.openai_api_key"
                 )
+            llm_obj = ChatOpenAI(
+                model=self.model, openai_api_key=settings.openai_api_key
+            )
 
-        tasks = [
-            asyncio.create_task(_call_window(question, group_uniid, s, e))
-            for s, e in windows
-        ]
-        # limit number of concurrent tasks
+        checkpointer = InMemorySaver() if self.use_memory else None
+
+        create_kwargs = dict(self.agent_kwargs)
+        if checkpointer is not None:
+            create_kwargs["checkpointer"] = checkpointer
+
+        logger.debug(
+            "Creating agent: model=%s use_memory=%s agent_kwargs=%s tools=%s",
+            self.model,
+            self.use_memory,
+            create_kwargs,
+            [getattr(t, "__name__", str(t)) for t in tools],
+        )
+
         try:
-            res = await asyncio.gather(*tasks)
-        except Exception:
-            # if any fails, collect completed
-            res = [t.result() for t in tasks if t.done()]
+            agent = create_agent(model=llm_obj, tools=tools, **create_kwargs)
+        except Exception as e:
+            logger.exception("Failed to create agent: %s", e)
+            raise
 
-        results.extend(res)
-
-        aggregated = aggregate_results(results)
-
-        return {
-            "items": aggregated.get("items", []),
-            "count": aggregated.get("count", 0),
-            "windows": windows,
+        ctx = {
+            "group_uniid": group_uniid,
+            "start_time": start_time,
+            "end_time": end_time,
+            "top_k": top_k,
+            "analysis": analysis,
         }
+
+        # Call agent: prefer `invoke`, then `run`, then callable. Log payload/result for debugging.
+        try:
+            # Prefer async invocation API if available (langgraph agents expose `ainvoke`)
+            if hasattr(agent, "ainvoke"):
+                ainvoke_fn = getattr(agent, "ainvoke")
+                payload = {"messages": [{"role": "user", "content": question}], **ctx}
+                configurable = {"configurable": {"thread_id": group_uniid}}
+                logger.debug(
+                    "Calling agent.ainvoke payload=%s configurable=%s",
+                    payload,
+                    configurable,
+                )
+                out = await ainvoke_fn(payload, configurable)
+            elif hasattr(agent, "invoke"):
+                invoke_fn = getattr(agent, "invoke")
+                payload = {"messages": [{"role": "user", "content": question}], **ctx}
+                configurable = {"configurable": {"thread_id": group_uniid}}
+                logger.debug(
+                    "Calling agent.invoke payload=%s configurable=%s",
+                    payload,
+                    configurable,
+                )
+                result = invoke_fn(payload, configurable)
+                logger.debug("agent.invoke returned (type=%s)", type(result))
+                if inspect.isawaitable(result):
+                    out = await result
+                else:
+                    out = result
+            elif hasattr(agent, "run"):
+                run_fn = getattr(agent, "run")
+                logger.debug("Calling agent.run input=%s context=%s", question, ctx)
+                result = run_fn(input=question, context=ctx)
+                logger.debug("agent.run returned (type=%s)", type(result))
+                if inspect.isawaitable(result):
+                    out = await result
+                else:
+                    out = result
+            elif callable(agent):
+                logger.debug(
+                    "Calling agent callable with input=%s context=%s", question, ctx
+                )
+                result = agent(input=question, context=ctx)
+                logger.debug("callable agent returned (type=%s)", type(result))
+                if inspect.isawaitable(result):
+                    out = await result
+                else:
+                    out = result
+            else:
+                raise RuntimeError("Agent object has no callable/invoke/run method")
+        except Exception as exc:
+            # Log full context to help debugging tools that behave differently sync/async
+            logger.exception(
+                "Agent invocation failed. question=%s group_uniid=%s ctx=%s error=%s",
+                question,
+                group_uniid,
+                ctx,
+                exc,
+            )
+            raise
+
+        # Normalize/unwrap agent output into a QueryService-like shape
+        answer = ""
+        confidence = 0.0
+        metadata: Dict[str, Any] = {"raw": {"agent_output": out}}
+
+        candidate = out
+        if (
+            isinstance(out, dict)
+            and "agent_output" in out
+            and isinstance(out["agent_output"], dict)
+        ):
+            candidate = out["agent_output"]
+
+        if isinstance(candidate, dict):
+            # Prefer explicit answer/confidence fields
+            if candidate.get("answer") or candidate.get("confidence"):
+                answer = candidate.get("answer", "")
+                try:
+                    confidence = float(candidate.get("confidence", 0.0))
+                except Exception:
+                    confidence = 0.0
+                metadata = candidate.get("metadata", metadata)
+            else:
+                # Try to extract from messages: last AI message content
+                msgs = candidate.get("messages") or out.get("messages")
+                if msgs:
+                    for m in reversed(msgs):
+                        content = None
+                        if isinstance(m, dict):
+                            content = m.get("content")
+                        else:
+                            content = getattr(m, "content", None)
+                        if isinstance(content, str) and content.strip():
+                            answer = content
+                            try:
+                                confidence = float(
+                                    candidate.get("raw", {}).get(
+                                        "confidence", confidence
+                                    )
+                                )
+                            except Exception:
+                                pass
+                            break
+
+        result: Dict[str, Any] = {
+            "answer": answer or "",
+            "confidence": confidence or 0.0,
+            "metadata": metadata,
+            "agent_output": out,
+        }
+
+        return result
 
 
 __all__ = ["LangChainAgent"]

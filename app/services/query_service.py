@@ -51,13 +51,8 @@ class QueryService:
         if analysis is None:
             now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
             analysis = analyze_query(question, history=None, now_str=now)
-        resolved = analysis.get("resolvedQuery") or question
-        keywords = analysis.get("keywords") or []
 
         # ---- DEBUG INJECTION (temporary) ----
-        # Set environment variable DEBUG_QUERY_INJECT=1 to override the LLM
-        # analysis with fixed test values for debugging without calling the LLM.
-        # PowerShell example: $env:DEBUG_QUERY_INJECT = '1'
         # analysis = {
         #     "queryType": "QueryTypeExact",
         #     "startTime": None,
@@ -69,8 +64,9 @@ class QueryService:
         #         {"text": "設備教學回報", "required": True},
         #     ],
         # }
-        # resolved = analysis.get("resolvedQuery")
-        # keywords = analysis.get("keywords") or []
+
+        resolved = analysis.get("resolvedQuery")
+        keywords = analysis.get("keywords") or []
 
         logger.info(
             "query_group:start group_uniid=%s gid=%s resolved=%s keywords=%s",
