@@ -1,0 +1,70 @@
+目前的整個流程作法是在
+
+app\api\v1\routers\query.py 調用 app\services\query_service.py 的 query_group 做查詢。
+
+但這樣作法少了幾部分
+
+1.當查詢的問題太複雜，很難在rga中一次查到正確答案。(例如問題是想查一個月內的所有居服員姓名及服務日期及時間)。
+2.所以我當初想引用 langchain ，就是要透過他的 agent ，先針對使用者的問題透過 llm 做思考後，再看該問題是否單次查詢 qdrant/bm25 即可，還是要多次的輪詢(例如在得知要查詢的資料是多天時，他會切成較少的天數並分多次去調用查詢結果，最終再合併)。
+3.使用 langchain 即有 MemorySaver 可以套多來進行記憶功能，我就不用自行再製作上下文記憶的程式。
+
+這是我要引入 langchain 的原因，所以架構上要您思考並回應要如何改，但不要開始更動程式碼。
+另外一項是務必依照 .github\copilot-instructions.md 這份的要求，一定要使用 langchain 1.0.x 的版本的 api。
+
+
+
+
+先做 fallback 而不直接整合 MemorySaver / 完整 create_agent
+
+LangChain API 變動頻繁（1.0.x 內部不同次版也有微差）：直接硬綁 create_agent(...) 與 MemorySaver，若執行環境的 langchain 次版本 API 小變動就會跑不動。PoC 要先能「可靠跑」在沒有完美相容情況下也能 fallback。
+依賴與環境問題：要使用 MemorySaver / agent 需要正確安裝並設定 LangChain、相關 model provider（OpenAI key 或其它），若環境沒配置會導致整個 endpoint 失效。PoC 現在能在沒有這些條件下仍提供功能。
+設計不確定性：Memory 的儲存層（短期 in-memory / Redis / DB）與一致性、隱私策略、過期與容量管理需要先設計好；若直接套入會留下架構性決策未處理的風險。
+逐步交付策略：先做小而完整（可測試）的部分能讓你早期驗證查詢拆窗/合併邏輯，再把更複雜的記憶/agent 功能安全地加入。
+
+
+
+
+
+
+我建議的逐步整合計畫（我會依此執行）
+
+確認目標：你同意用 LangChain 1.0.x、model 預設 gpt-4o-mini、並且要短期記憶先使用 in-memory（session）嗎？（若要 Redis，我會幫你加可選 adapter）
+把 LangChain 的 MemorySaver（或 1.0.x 相應的 memory API）安全地注入 LangChainAgent：
+在能匯入 langchain.memory 的情況下，建立 memory 實例（in-memory），並注入 agent；若匯入失敗則 log 並 fallback（目前已做 best-effort 嘗試）。
+設計記憶鍵／session token（例如從 API payload 傳 session_id）以區分不同使用者/會話。
+完整註冊 tools 給 create_agent：把 query_tool、split_range、aggregate_tool、db_lookup_chunks 包成 LangChain 可用的 tool 物件，並把 description 填好，然後呼叫 create_agent(model=..., tools=..., memory=memory)。
+加入 guardrails：max_steps、timeout、max_windows、max_calls，避免 agent 無限迴圈或暴走。
+測試：撰寫 demo 腳本與單元測試（含沒有 langchain 的 fallback 測試），並在本機測試一個月拆窗案例（7 天切片），比對合併結果。
+文件與設定：在 app/core/config / settings 新增 agent 與 memory 相關設定（enable_agent, agent_model, memory_backend, memory_config 等），並更新 pyproject.toml（若需要 pin 特定 langchain 版本）。
+需要你確認的幾件小事（回覆其中一項或多項）
+
+記憶後端：先使用「in‑memory session」還是直接要「Redis」？（建議先 in-memory；之後再切換到 Redis）
+session id：agent 的記憶是否要依 session_id（由 API client 提供）來隔離？還是以 group_uniid + user_id 組成？
+model provider 與金鑰：你要用哪個 LLM provider（預設 langchain-openai + OPENAI_API_KEY），或你有自家 private LLM 需要支援？
+是否要我立刻開始實作（我會：a) 在 LangChainAgent 裡加入 MemorySaver 注入 b) 把 tools 包成 LangChain tool objects c) 增加 config 與 demo 腳本）？
+我會採取的實作細節（如果你同意）
+
+在 langchain_agent.py：
+嘗試匯入 langchain.memory（MemorySaver），建立 memory = MemorySaver(namespace=session_id)（或 1.0.x 等價 API）；如成功則在 create_agent(..., memory=memory) 中傳入；如失敗則記錄並使用目前的 fallback orchestrator。
+把現有 query_tool/db_lookup_chunks/split_range 包成 LangChain Tool（或 1.0.x 要求的 callable wrapper）。
+在 agent run 完成時，把 intermediate steps 與 final summary 寫入 memory（session scope）。
+新增 API 支援 session_id（可選）；若未傳，使用隨機短期 session id。
+增加 scripts/run_agent_demo.py 來自動執行拆窗測試並把結果輸出成 JSON。
+風險與注意事項
+
+要正確驗證 LangChain 1.0.x API 在你的 env 中的行為；我會在程式碼裡寫 clear fallback。
+若要持久化記憶（Redis/DB），需你提供連線設定或允許我新增可選設定（settings）。
+若要使用外部 LLM（OpenAI），請確保 OPENAI_API_KEY 或相應憑證在環境變數中。
+總結
+
+原因：我先做 fallback 是為了兼顧穩定性、環境差異與逐步驗證；直接上 MemorySaver / create_agent 會增加依賴與破壞風險。
+若你同意，我會立刻把 MemorySaver（in‑memory）與完整 create_agent integration 實作進 PoC（包含 tools 註冊、session_id、demo 腳本、設定），並保留穩健的 fallback 行為。
+請回覆：
+
+要我直接開始實作 MemorySaver + 完整 create_agent（預設 in‑memory, session_id 支援, 使用 OpenAI provider）嗎？
+
+
+
+
+
+好 按您說的方式來做，其他功能後續加 我現在可以如何測試您已做好的功能呢?

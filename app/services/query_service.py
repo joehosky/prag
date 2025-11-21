@@ -28,6 +28,7 @@ class QueryService:
         question: str,
         top_k: int = 50,
         search_type: str = "hybrid",
+        analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         gid = None
         db = None
@@ -46,8 +47,10 @@ class QueryService:
                     pass
 
         # 1) LLM analysis
-        now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        analysis = analyze_query(question, history=None, now_str=now)
+        # If caller provided `analysis`, use it; otherwise call analyze_query
+        if analysis is None:
+            now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
+            analysis = analyze_query(question, history=None, now_str=now)
         resolved = analysis.get("resolvedQuery") or question
         keywords = analysis.get("keywords") or []
 
