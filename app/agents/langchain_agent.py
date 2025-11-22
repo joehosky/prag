@@ -1,13 +1,10 @@
-"""LangChain 1.0.x agent runner
-
-This module provides a single, clean `LangChainAgent` definition with
-proper parameter binding to tools.
-"""
+"""LangChain 1.0.x agent that analyzes RAG results and returns structured answers."""
 
 from __future__ import annotations
 
-import inspect
 import logging
+import json
+import re
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
@@ -22,12 +19,12 @@ try:
     from langgraph.checkpoint.memory import InMemorySaver
 except Exception as exc:
     raise ImportError(
-        "langchain 1.0.x and provider packages (langchain_openai, langgraph) are required for LangChainAgent.\n"
+        "langchain 1.0.x and provider packages are required for LangChainAgent."
     ) from exc
 
 
 class LangChainAgent:
-    """Strict LangChain 1.0.x agent wrapper with proper tool parameter binding.
+    """LangChain agent that analyzes RAG results and returns structured answers.
 
     Parameters
     - model: model name passed to LangChain's OpenAI when no `llm_instance` is provided.
@@ -58,11 +55,13 @@ class LangChainAgent:
         use_agent: bool = True,
         analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
-        """Run the LangChain agent and return the agent output.
+        """Run the LangChain agent and return analyzed results.
 
-        This method creates dynamically bound tools that capture the context
-        parameters (group_uniid, start_time, end_time, top_k, analysis) so
-        the LLM only needs to provide the question parameter when calling tools.
+        Returns:
+            Dict containing:
+            - answer: Synthesized answer based on search results
+            - confidence: Confidence score (0.0-1.0)
+            - metadata: Contains chunk_ids and items
         """
 
         if analysis is None:
@@ -85,18 +84,42 @@ class LangChainAgent:
         async def query_messages(question_text: str) -> Dict[str, Any]:
             """Search and retrieve relevant LINE messages based on the question.
 
-            This tool searches through the LINE group's message history to find
-            relevant messages that match the given question or search query.
+            This tool performs semantic search through the LINE group's message history
+            to find the most relevant messages matching the given question.
 
             Args:
-                question_text: The search query or question to find relevant messages.
-                             This should be a natural language question or keywords.
+                question_text: The search query or question. Use natural language or
+                            keywords to describe what you're looking for.
 
             Returns:
                 A dictionary containing:
-                - items: List of matched messages with chunk_id, summary, and score
-                - metadata: Additional information about the search
-                - raw: Raw query service results
+                - answer: A string containing all matched chunk messages, separated by
+                        double newlines (\\n\\n). Each segment is a message chunk that
+                        matches the query.
+                - items: A list of match details, where each item contains:
+                  * chunk_id: Unique identifier for the message chunk
+                  * score: Relevance score (0 to 100, higher is more relevant)
+                  * text: The actual message content (corresponds to a segment in 'answer')
+                - metadata: Additional search information (optional)
+
+            Important notes:
+                - Results are ranked by relevance score (highest first)
+                - Scores above 80 indicate highly relevant matches
+                - Scores between 60-80 are moderately relevant
+                - The 'answer' field contains all messages concatenated for easy reading
+                - The 'items' field provides structured data with scores for each chunk
+                - Use high-scoring items (score > 70) for the most accurate information
+
+            Example return structure:
+                {
+                    "answer": "First message chunk\\n\\nSecond message chunk\\n\\nThird chunk",
+                    "items": [
+                        {"chunk_id": "msg_001", "score": 95, "text": "First message chunk"},
+                        {"chunk_id": "msg_002", "score": 88, "text": "Second message chunk"},
+                        {"chunk_id": "msg_003", "score": 75, "text": "Third chunk"}
+                    ],
+                    "metadata": {...}
+                }
             """
             return await query_tool(
                 question=question_text,
@@ -127,10 +150,9 @@ class LangChainAgent:
             create_kwargs["checkpointer"] = checkpointer
 
         logger.debug(
-            "Creating agent: model=%s use_memory=%s agent_kwargs=%s tools=%s",
+            "Creating agent: model=%s use_memory=%s tools=%s",
             self.model,
             self.use_memory,
-            create_kwargs,
             [getattr(t, "name", getattr(t, "__name__", str(t))) for t in tools],
         )
 
@@ -141,13 +163,55 @@ class LangChainAgent:
             raise
 
         try:
+            # Enhanced system message to guide agent's analysis
             sys_msg = (
-                f"You are helping search LINE group messages for group {group_uniid}. "
-            )
-            sys_msg += (
-                "Use the query_messages tool to search for relevant messages based on the user's question. "
-                "The tool requires only the search question - all other context is already configured."
-            )
+                fsys_msg
+            ) = f"""You are an intelligent assistant analyzing LINE group messages.
+
+                    Your workflow:
+                    1. Use the query_messages tool to search for relevant messages
+                    2. Analyze the returned results carefully, Pay attention to the 'score' field (0-100)
+                    3. Determine if you can answer the question:
+                    - If you have at least one result with score > 30 that relates to the question → Provide answer
+                    - If all results have score < 30 OR none relate to the question → Cannot answer
+                    4. Synthesize your response accordingly
+                    5. answer MUST be "繁體中文"
+
+                    CRITICAL: You MUST respond in the following JSON format:
+                    {{
+                        "answer": "Your synthesized answer OR the 'no answer' message",
+                        "chunk_ids": "comma-separated chunk_ids OR empty string"
+                    }}
+
+                    RULES:
+                    1. When you CAN answer (have relevant results with score > 30):
+                    - Combine information from the most relevant chunks
+                    - Organize the information logically
+                    - Include only the chunk_ids you actually referenced
+                    - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
+
+                    2. When you CANNOT answer (no relevant results OR all scores < 30):
+                    - Set answer to exactly: "無法找到問題相關的答案，請再輸入更詳細的問答"
+                    - Set chunk_ids to empty string: ""
+                    - Example: {{"answer": "無法找到問題相關的答案，請再輸入更詳細的問答", "chunk_ids": ""}}
+
+                    Example - Relevant results found:
+                    {{
+                        "answer": "居服人員王大明的照顧非常詳細,對個案無微不至...",
+                        "chunk_ids": "msg_001,msg_002,msg_005"
+                    }}
+
+                    Example - NO relevant results:
+                    {{
+                        "answer": "無法找到問題相關的答案，請再填入更詳細的問答",
+                        "chunk_ids": ""
+                    }}
+
+                    Remember:
+                    - Respond ONLY with valid JSON
+                    - Do not include any text outside the JSON structure
+                    - Use the exact message "無法找到問題相關的答案，請再填入更詳細的問答" when you cannot answer
+                    """
 
             payload = {
                 "messages": [
@@ -157,16 +221,10 @@ class LangChainAgent:
             }
             configurable = {"configurable": {"thread_id": group_uniid}}
 
+            logger.debug("Calling agent.ainvoke: question=%s", question)
+
             result = await agent.ainvoke(payload, configurable)
-            logger.debug("agent.ainvoke returned (type=%s)", type(result))
-
-            out = result
-
-            # Expect agent to return canonical content dict in the last message:
-            # {'answer': str, 'items': [{chunk_id, score, text}, ...]}
-            msgs = out["messages"]
-            last = msgs[-1]
-            candidate = last["content"]
+            logger.debug("agent.ainvoke returned")
 
         except Exception as exc:
             logger.exception(
@@ -177,33 +235,76 @@ class LangChainAgent:
             )
             raise
 
-        # Normalize agent output according to new query_tool / QueryService format
-        answer = ""
-        confidence = 0.0
-        metadata: Dict[str, Any] = {}
-
-        answer = candidate.get("answer", "") or ""
-        items = candidate.get("items") or []
-
-        # compute confidence from items' scores (scores are integers 0-100)
         try:
-            if items:
-                max_score = max([int(i.get("score", 0)) for i in items])
-                confidence = float(max_score) / 100.0
-            else:
-                confidence = 0.0
-        except Exception:
-            confidence = 0.0
+            parsed_result = self._parse_agent_output(result)
+            return parsed_result
+        except Exception as e:
+            logger.exception("Failed to parse agent output: %s", e)
 
-        metadata["items"] = items
+    def _parse_agent_output(self, agent_output: Dict[str, Any]) -> Dict[str, Any]:
+        """Parse agent output to extract answer, chunk_ids, and metadata.
 
-        result: Dict[str, Any] = {
-            "answer": answer or "",
-            "confidence": confidence or 0.0,
+        Args:
+            agent_output: The raw output from agent.ainvoke
+
+        Returns:
+            Structured dict with answer, confidence, and metadata
+        """
+        messages = agent_output.get("messages", [])
+
+        # Find the agent's final response (last AI message)
+        agent_response = None
+        for msg in reversed(messages):
+            if hasattr(msg, "type"):
+                msg_type = msg.type
+                if msg_type in ("ai", "assistant"):
+                    content = msg.content if hasattr(msg, "content") else ""
+                    if isinstance(content, str) and content.strip():
+                        agent_response = content.strip()
+                        break
+            elif isinstance(msg, dict):
+                msg_type = msg.get("type") or msg.get("role")
+                if msg_type in ("ai", "assistant"):
+                    content = msg.get("content", "")
+                    if isinstance(content, str) and content.strip():
+                        agent_response = content.strip()
+                        break
+
+        if not agent_response:
+            raise ValueError("No agent response found in messages")
+
+        # Parse the JSON response from agent
+        cleaned_response = agent_response.strip()
+        if cleaned_response.startswith("```"):
+            cleaned_response = re.sub(r"^```(?:json)?\s*", "", cleaned_response)
+            cleaned_response = re.sub(r"\s*```$", "", cleaned_response)
+            cleaned_response = cleaned_response.strip()
+
+        try:
+            parsed_json = json.loads(cleaned_response)
+            answer = parsed_json.get("answer", "")
+            chunk_ids_str = parsed_json.get("chunk_ids", "")
+        except json.JSONDecodeError as e:
+            logger.warning(f"Failed to parse agent JSON response: {e}")
+            answer = agent_response
+            chunk_ids_str = ""
+
+        metadata: Dict[str, Any] = {
+            "chunk_ids": chunk_ids_str,
+        }
+
+        result_dict: Dict[str, Any] = {
+            "answer": answer,
             "metadata": metadata,
         }
 
-        return result
+        logger.info(
+            "Parsed agent output: answer_length=%d, chunk_ids=%s, confidence=%.2f",
+            len(answer),
+            chunk_ids_str,
+        )
+
+        return result_dict
 
 
 __all__ = ["LangChainAgent"]

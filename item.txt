@@ -68,3 +68,15 @@ model provider 與金鑰：你要用哪個 LLM provider（預設 langchain-opena
 
 
 好 按您說的方式來做，其他功能後續加 我現在可以如何測試您已做好的功能呢?
+
+
+
+
+
+{
+  "group_uniid": "C2d3216af8f42fb0a039400ece7daa754",
+  "question": "廖萬全同意書是否已簽署完畢呢?",
+  "search_type": "hybrid",
+  "top_k": 50
+}
+

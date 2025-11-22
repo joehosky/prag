@@ -22,7 +22,6 @@ class QueryRequest(BaseModel):
 
 class QueryResponse(BaseModel):
     answer: str
-    confidence: float
     metadata: Optional[Dict] = None
 
 
@@ -68,13 +67,9 @@ async def query_agent(request: QueryRequest):
     # Expect agent.run to return canonical dict: {'answer': str, 'confidence': float, 'metadata': {...}}
     if isinstance(out, dict):
         answer = out.get("answer", "")
-        confidence = float(out.get("confidence", 0.0))
         metadata = out.get("metadata")
     else:
         answer = ""
-        confidence = 0.0
         metadata = {"raw": out}
 
-    return QueryResponse(
-        answer=answer or "", confidence=confidence or 0.0, metadata=metadata
-    )
+    return QueryResponse(answer=answer or "", metadata=metadata)
