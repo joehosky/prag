@@ -80,3 +80,10 @@ model provider 與金鑰：你要用哪個 LLM provider（預設 langchain-opena
   "top_k": 50
 }
 
+
+{
+  "group_uniid": "C2d3216af8f42fb0a039400ece7daa754",
+  "question": "目前有多少位居服員提供那些個案服務?",
+  "search_type": "hybrid",
+  "top_k": 50
+}

@@ -6,6 +6,8 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 from typing import Optional, Dict, List
 
+from app.tools.query_tool import query_messages_tool
+
 router = APIRouter()
 
 
@@ -33,7 +35,7 @@ async def query_rag(request: QueryRequest):
 
     svc = QueryService()
     try:
-        result = await svc.query_group(
+        result = await query_messages_tool(
             group_uniid=request.group_uniid,
             question=request.question,
             top_k=request.top_k,

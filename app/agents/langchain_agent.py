@@ -8,7 +8,7 @@ import re
 from typing import Any, Dict, List, Optional
 
 from app.core.config import settings
-from app.tools.query_tool import query_tool
+from app.tools.query_tool import query_messages_tool
 from app.tools.split_range_tool import split_range
 
 logger = logging.getLogger("app.agents.langchain_agent")
@@ -60,8 +60,7 @@ class LangChainAgent:
         Returns:
             Dict containing:
             - answer: Synthesized answer based on search results
-            - confidence: Confidence score (0.0-1.0)
-            - metadata: Contains chunk_ids and items
+            - metadata: Contains chunk_ids
         """
 
         if analysis is None:
@@ -75,60 +74,13 @@ class LangChainAgent:
             )
             analysis = analyze_query(question, history=None, now_str=now)
 
-        try:
-            from langchain_core.tools import tool
-        except ImportError:
-            from langchain.tools import tool
-
-        @tool
-        async def query_messages(question_text: str) -> Dict[str, Any]:
-            """Search and retrieve relevant LINE messages based on the question.
-
-            This tool performs semantic search through the LINE group's message history
-            to find the most relevant messages matching the given question.
-
-            Args:
-                question_text: The search query or question. Use natural language or
-                            keywords to describe what you're looking for.
-
-            Returns:
-                A dictionary containing:
-                - answer: A string containing all matched chunk messages, separated by
-                        double newlines (\\n\\n). Each segment is a message chunk that
-                        matches the query.
-                - items: A list of match details, where each item contains:
-                  * chunk_id: Unique identifier for the message chunk
-                  * score: Relevance score (0 to 100, higher is more relevant)
-                  * text: The actual message content (corresponds to a segment in 'answer')
-                - metadata: Additional search information (optional)
-
-            Important notes:
-                - Results are ranked by relevance score (highest first)
-                - Scores above 80 indicate highly relevant matches
-                - Scores between 60-80 are moderately relevant
-                - The 'answer' field contains all messages concatenated for easy reading
-                - The 'items' field provides structured data with scores for each chunk
-                - Use high-scoring items (score > 70) for the most accurate information
-
-            Example return structure:
-                {
-                    "answer": "First message chunk\\n\\nSecond message chunk\\n\\nThird chunk",
-                    "items": [
-                        {"chunk_id": "msg_001", "score": 95, "text": "First message chunk"},
-                        {"chunk_id": "msg_002", "score": 88, "text": "Second message chunk"},
-                        {"chunk_id": "msg_003", "score": 75, "text": "Third chunk"}
-                    ],
-                    "metadata": {...}
-                }
-            """
-            return await query_tool(
-                question=question_text,
-                group_uniid=group_uniid,
-                start_time=start_time,
-                end_time=end_time,
-                top_k=top_k,
-                analysis=analysis,
-            )
+        query_messages = query_messages_tool(
+            group_uniid=group_uniid,
+            start_time=start_time,
+            end_time=end_time,
+            top_k=top_k,
+            analysis=analysis,
+        )
 
         tools: List[Any] = [query_messages, split_range]
 
@@ -299,7 +251,7 @@ class LangChainAgent:
         }
 
         logger.info(
-            "Parsed agent output: answer_length=%d, chunk_ids=%s, confidence=%.2f",
+            "Parsed agent output: answer_length=%d, chunk_ids=%s",
             len(answer),
             chunk_ids_str,
         )
