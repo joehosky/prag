@@ -191,9 +191,9 @@ class LangChainAgent:
                     - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
 
                     2. When you CANNOT answer (no relevant results OR all scores < 30):
-                    - Set answer to exactly: "無法找到問題相關的答案，請再輸入更詳細的問答"
+                    - Set answer to exactly: "無法找到問題相關的答案，請再輸入更詳細的資訊"
                     - Set chunk_ids to empty string: ""
-                    - Example: {{"answer": "無法找到問題相關的答案，請再輸入更詳細的問答", "chunk_ids": ""}}
+                    - Example: {{"answer": "無法找到問題相關的答案，請再輸入更詳細的資訊", "chunk_ids": ""}}
 
                     Example - Relevant results found:
                     {{
