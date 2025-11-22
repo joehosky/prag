@@ -65,40 +65,15 @@ async def query_agent(request: QueryRequest):
     except Exception as e:
         return QueryResponse(answer="", confidence=0.0, metadata={"error": str(e)})
 
-    answer = ""
-    confidence = 0.0
-    metadata: Dict[str, Any] = {"raw": out}
-
+    # Expect agent.run to return canonical dict: {'answer': str, 'confidence': float, 'metadata': {...}}
     if isinstance(out, dict):
-        candidate = out
-        if "agent_output" in out and isinstance(out["agent_output"], dict):
-            candidate = out["agent_output"]
-
-        if candidate.get("answer") or candidate.get("confidence"):
-            answer = candidate.get("answer", "")
-            confidence = float(candidate.get("confidence", 0.0))
-            metadata = candidate.get("metadata", out.get("metadata", metadata))
-        else:
-            msgs = candidate.get("messages") if isinstance(candidate, dict) else None
-            if not msgs and isinstance(out, dict):
-                msgs = out.get("messages")
-
-            if msgs:
-                for m in reversed(msgs):
-                    content = None
-                    if isinstance(m, dict):
-                        content = m.get("content")
-                    else:
-                        content = getattr(m, "content", None)
-                    if isinstance(content, str) and content.strip():
-                        answer = content
-                        try:
-                            confidence = float(
-                                candidate.get("raw", {}).get("confidence", confidence)
-                            )
-                        except Exception:
-                            pass
-                        break
+        answer = out.get("answer", "")
+        confidence = float(out.get("confidence", 0.0))
+        metadata = out.get("metadata")
+    else:
+        answer = ""
+        confidence = 0.0
+        metadata = {"raw": out}
 
     return QueryResponse(
         answer=answer or "", confidence=confidence or 0.0, metadata=metadata

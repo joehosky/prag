@@ -48,6 +48,16 @@ class ChunkMessageSummaryRepository(BaseRepository[ChunkMessageSummary]):
         )
         return db.scalars(stmt).one_or_none()
 
+    def get_by_chunk_ids(
+        self, db: Session, chunk_ids: List[str]
+    ) -> List[ChunkMessageSummary]:
+        if not chunk_ids:
+            return []
+        stmt = select(ChunkMessageSummary).where(
+            ChunkMessageSummary.chunk_id.in_(chunk_ids)
+        )
+        return db.scalars(stmt).all()
+
     def find_by_group_and_day(
         self, db: Session, group_id: int, day_start, day_end
     ) -> List[ChunkMessageSummary]:

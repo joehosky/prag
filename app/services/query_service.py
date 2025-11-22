@@ -26,6 +26,8 @@ class QueryService:
         self,
         group_uniid: str,
         question: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
         top_k: int = 50,
         search_type: str = "hybrid",
         analysis: Optional[Dict[str, Any]] = None,
@@ -47,23 +49,15 @@ class QueryService:
                     pass
 
         # 1) LLM analysis
-        # If caller provided `analysis`, use it; otherwise call analyze_query
         if analysis is None:
             now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
             analysis = analyze_query(question, history=None, now_str=now)
-
-        # ---- DEBUG INJECTION (temporary) ----
-        # analysis = {
-        #     "queryType": "QueryTypeExact",
-        #     "startTime": None,
-        #     "endTime": None,
-        #     "resolvedQuery": "包聖嬌案主 前測及設備教學回報",
-        #     "keywords": [
-        #         {"text": "包聖嬌", "required": True},
-        #         {"text": "前測", "required": True},
-        #         {"text": "設備教學回報", "required": True},
-        #     ],
-        # }
+            an_start = analysis.get("startTime")
+            an_end = analysis.get("endTime")
+            if an_start and str(an_start).strip():
+                start_time = an_start
+            if an_end and str(an_end).strip():
+                end_time = an_end
 
         resolved = analysis.get("resolvedQuery")
         keywords = analysis.get("keywords") or []
@@ -83,7 +77,6 @@ class QueryService:
             logger.exception("Failed to generate embedding for query")
             qvec = None
 
-        # Log query vector summary
         try:
             logger.info(
                 "query_group:qvec len=%s",
@@ -98,20 +91,62 @@ class QueryService:
             qsvc = QdrantService()
             if qvec:
                 qfilter = None
-                if gid is not None:
-                    try:
-                        match_value = int(gid)
-
-                        qfilter = qmodels.Filter(
-                            must=[
+                try:
+                    must_filters = []
+                    # group id filter
+                    if gid is not None:
+                        try:
+                            match_value = int(gid)
+                            must_filters.append(
                                 qmodels.FieldCondition(
                                     key="group_id",
                                     match=qmodels.MatchValue(value=match_value),
                                 )
-                            ]
-                        )
+                            )
+                        except Exception:
+                            logger.debug("query_group: invalid gid for filter: %s", gid)
+
+                    # date range filter: use only date portion (YYYY-MM-DD)
+                    try:
+                        if (start_time and str(start_time).strip()) or (
+                            end_time and str(end_time).strip()
+                        ):
+                            gte = None
+                            lte = None
+                            if start_time and str(start_time).strip():
+                                try:
+                                    gte = str(start_time).strip().split(" ")[0]
+                                except Exception:
+                                    gte = str(start_time).strip()
+                            if end_time and str(end_time).strip():
+                                try:
+                                    lte = str(end_time).strip().split(" ")[0]
+                                except Exception:
+                                    lte = str(end_time).strip()
+
+                            # build range only with provided bounds
+                            range_kwargs = {}
+                            if gte is not None:
+                                range_kwargs["gte"] = gte
+                            if lte is not None:
+                                range_kwargs["lte"] = lte
+
+                            if range_kwargs:
+                                must_filters.append(
+                                    qmodels.FieldCondition(
+                                        key="date",
+                                        range=qmodels.Range(**range_kwargs),
+                                    )
+                                )
                     except Exception:
+                        logger.exception("Failed to build date range filter")
+
+                    if must_filters:
+                        qfilter = qmodels.Filter(must=must_filters)
+                    else:
                         qfilter = None
+                except Exception:
+                    qfilter = None
 
                 res = qsvc.client.search(
                     collection_name=qsvc.collection,
@@ -160,6 +195,74 @@ class QueryService:
                     bm_hits.append({"id": doc_id, "score": float(score)})
                 except Exception:
                     bm_hits.append({"id": doc_id, "score": 0.0})
+
+            # apply optional date-range filtering to BM25 hits using chunk start_time
+            if (start_time and str(start_time).strip()) or (
+                end_time and str(end_time).strip()
+            ):
+                db_tmp = None
+                try:
+                    ids = [str(h.get("id")) for h in bm_hits if h.get("id")]
+                    if not ids:
+                        bm_hits = []
+                    else:
+                        db_tmp = SessionLocal()
+                        repo_tmp = ChunkMessageSummaryRepository()
+                        chunks = repo_tmp.get_by_chunk_ids(db_tmp, ids)
+                        chunk_map_by_chunk_id = {
+                            str(getattr(c, "chunk_id")): c for c in chunks
+                        }
+
+                        def _parse_date_only(s: str):
+                            s2 = str(s).strip().split(" ")[0]
+                            try:
+                                return datetime.strptime(s2, "%Y-%m-%d").date()
+                            except Exception:
+                                return None
+
+                        gte_date = (
+                            _parse_date_only(start_time)
+                            if start_time and str(start_time).strip()
+                            else None
+                        )
+                        lte_date = (
+                            _parse_date_only(end_time)
+                            if end_time and str(end_time).strip()
+                            else None
+                        )
+
+                        filtered = []
+                        for h in bm_hits:
+                            cid = h.get("id")
+                            if cid is None:
+                                continue
+                            ch = chunk_map_by_chunk_id.get(str(cid))
+                            if not ch:
+                                continue
+                            st = getattr(ch, "start_time", None)
+                            if not st:
+                                continue
+                            try:
+                                ch_date = st.date()
+                            except Exception:
+                                continue
+                            ok = True
+                            if gte_date and ch_date < gte_date:
+                                ok = False
+                            if lte_date and ch_date > lte_date:
+                                ok = False
+                            if ok:
+                                filtered.append(h)
+
+                        bm_hits = filtered
+                except Exception:
+                    logger.exception("Failed to filter BM25 hits by date range (batch)")
+                finally:
+                    if db_tmp:
+                        try:
+                            db_tmp.close()
+                        except Exception:
+                            pass
         except Exception:
             logger.exception("BM25 search failed")
         finally:
@@ -308,9 +411,8 @@ class QueryService:
                 mmr_selected,
             )
 
-            # build answer from selected
-            results = []
-            scores = []
+            # build answer from selected: create items list with chunk_id, score and text
+            items = []
             for item in mmr_selected:
                 cid = item.get("id")
                 ch = None
@@ -329,29 +431,20 @@ class QueryService:
                     ch = None
 
                 text = ""
+                chunk_id = ""
                 if ch:
                     text = getattr(ch, "message_content", None) or getattr(
                         ch, "message_summary", ""
                     )
-                results.append(text)
-                scores.append(int(round(item.get("final", 0.0) * 100)))
+                    chunk_id = getattr(ch, "chunk_id", "")
 
-            answer = "\n\n".join(results)
-            confidence = max([f.get("final", 0.0) for f in fused_filtered], default=0.0)
+                score_int = int(round(item.get("final", 0.0) * 100))
+                items.append({"chunk_id": chunk_id, "score": score_int, "text": text})
 
-            metadata = {
-                "analysis": analysis,
-                "qdrant_hits": qdrant_hits,
-                "bm25_hits": bm_hits,
-                "candidates": candidates,
-                "scores": scores,
-            }
+            answer = "\n\n".join([it.get("text", "") for it in items])
 
-            return {
-                "answer": answer,
-                "confidence": float(confidence),
-                "metadata": metadata,
-            }
+            # Return only answer and per-item chunk_id/score/text to simplify caller parsing
+            return {"answer": answer, "items": items}
 
         finally:
             db.close()

@@ -158,12 +158,15 @@ class LangChainAgent:
             configurable = {"configurable": {"thread_id": group_uniid}}
 
             result = await agent.ainvoke(payload, configurable)
-            logger.debug("agent.invoke returned (type=%s)", type(result))
+            logger.debug("agent.ainvoke returned (type=%s)", type(result))
 
-            if inspect.isawaitable(result):
-                out = await result
-            else:
-                out = result
+            out = result
+
+            # Expect agent to return canonical content dict in the last message:
+            # {'answer': str, 'items': [{chunk_id, score, text}, ...]}
+            msgs = out["messages"]
+            last = msgs[-1]
+            candidate = last["content"]
 
         except Exception as exc:
             logger.exception(
@@ -174,35 +177,30 @@ class LangChainAgent:
             )
             raise
 
+        # Normalize agent output according to new query_tool / QueryService format
         answer = ""
         confidence = 0.0
-        metadata: Dict[str, Any] = {"raw": {"agent_output": out}}
+        metadata: Dict[str, Any] = {}
 
-        candidate = out
-        if isinstance(candidate, dict):
-            msgs = candidate.get("messages")
-            if msgs:
-                for m in reversed(msgs):
-                    content = None
-                    if isinstance(m, dict):
-                        content = m.get("content")
-                    else:
-                        content = getattr(m, "content", None)
-                    if isinstance(content, str) and content.strip():
-                        answer = content
-                        try:
-                            confidence = float(
-                                candidate.get("raw", {}).get("confidence", confidence)
-                            )
-                        except Exception:
-                            pass
-                        break
+        answer = candidate.get("answer", "") or ""
+        items = candidate.get("items") or []
+
+        # compute confidence from items' scores (scores are integers 0-100)
+        try:
+            if items:
+                max_score = max([int(i.get("score", 0)) for i in items])
+                confidence = float(max_score) / 100.0
+            else:
+                confidence = 0.0
+        except Exception:
+            confidence = 0.0
+
+        metadata["items"] = items
 
         result: Dict[str, Any] = {
             "answer": answer or "",
             "confidence": confidence or 0.0,
             "metadata": metadata,
-            "agent_output": out,
         }
 
         return result

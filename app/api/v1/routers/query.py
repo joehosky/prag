@@ -4,7 +4,7 @@ RAG Query Router
 
 from fastapi import APIRouter
 from pydantic import BaseModel
-from typing import Optional, Dict
+from typing import Optional, Dict, List
 
 router = APIRouter()
 
@@ -16,10 +16,15 @@ class QueryRequest(BaseModel):
     top_k: int = 50
 
 
+class QueryItem(BaseModel):
+    chunk_id: str
+    score: int
+    text: str
+
+
 class QueryResponse(BaseModel):
     answer: str
-    confidence: float
-    metadata: Optional[Dict] = None
+    items: List[QueryItem]
 
 
 @router.post("/", response_model=QueryResponse)
@@ -29,12 +34,13 @@ async def query_rag(request: QueryRequest):
     svc = QueryService()
     try:
         result = await svc.query_group(
-            request.group_uniid, request.question, request.top_k, request.search_type
+            group_uniid=request.group_uniid,
+            question=request.question,
+            top_k=request.top_k,
+            search_type=request.search_type,
         )
         return QueryResponse(
-            answer=result.get("answer", ""),
-            confidence=float(result.get("confidence", 0.0)),
-            metadata=result.get("metadata"),
+            answer=result.get("answer", ""), items=result.get("items", [])
         )
     except Exception as e:
-        return QueryResponse(answer="", confidence=0.0, metadata={"error": str(e)})
+        return QueryResponse(answer="", items=[])

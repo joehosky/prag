@@ -29,26 +29,13 @@ async def query_tool(
     svc = QueryService()
 
     result = await svc.query_group(
-        group_uniid=group_uniid, question=question, top_k=top_k, analysis=analysis
+        group_uniid=group_uniid,
+        question=question,
+        start_time=start_time,
+        end_time=end_time,
+        top_k=top_k,
+        analysis=analysis,
     )
 
-    items = []
-    meta = result.get("metadata", {})
-    candidates = meta.get("candidates", [])
-    scores = meta.get("scores", [])
-    summaries = []
-
-    answer = result.get("answer", "")
-    if answer:
-        summaries = [s.strip() for s in answer.split("\n\n") if s.strip()]
-
-    for idx, cid in enumerate(candidates):
-        items.append(
-            {
-                "chunk_id": cid,
-                "summary": summaries[idx] if idx < len(summaries) else "",
-                "score": scores[idx] if idx < len(scores) else 0,
-            }
-        )
-
-    return {"items": items, "metadata": meta, "raw": result}
+    # query_group returns {'answer': str(item text separated by \n\n), 'items': [{chunk_id, score, text}, ...]}
+    return result
