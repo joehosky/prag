@@ -78,3 +78,6 @@ coverage.xml
 
 # TortoiseSVN
 .svn/
+
+# Local item file - should not be tracked
+item.txt
