@@ -1,47 +1,58 @@
 from __future__ import annotations
 
-import time
 import logging
-from typing import List, Optional
+from typing import List
 
-from openai import OpenAI
-
-from app.core.config import settings
+from app.agents.llm_manager import get_llm_manager
 
 logger = logging.getLogger(__name__)
 
 
-def generate_embedding(text: str, timeout: int = 60, retries: int = 1) -> List[float]:
-    """Generate embedding vector for `text` using OpenAI Embeddings API.
+def generate_embedding(
+    text: str,
+    timeout: int = 60,
+    retries: int = 1,
+    model: str | None = None,
+) -> List[float]:
+    """Generate embedding vector for `text` using LangChain LLMManager.
 
-    Returns a list of floats.
+    Args:
+        text: Text to embed
+        timeout: Timeout (deprecated, LangChain handles internally)
+        retries: Retries (deprecated, LangChain handles internally)
+        model: Embedding model to use (None = use default)
+
+    Returns:
+        List of floats (embedding vector)
+
+    Example:
+        >>> # Use default embedding model
+        >>> vector = generate_embedding("Hello world")
+        >>> # Use specific model
+        >>> vector = generate_embedding(
+        ...     "Hello world",
+        ...     model="text-embedding-3-small"
+        ... )
     """
-    api_key = settings.openai_api_key
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY is not configured in settings")
-
-    model = settings.openai_embedding_model
-    client = OpenAI(api_key=api_key)
-
-    attempt = 0
-    backoff = 0.5
-    while True:
-        try:
-            resp = client.embeddings.create(input=text, model=model, timeout=timeout)
-            # response.data is a list of objects with .embedding
-            if resp and getattr(resp, "data", None) and len(resp.data) > 0:
-                emb = resp.data[0].embedding
-                return [float(x) for x in emb]
-            raise RuntimeError("No embedding returned from API")
-        except Exception as e:
-            attempt += 1
-            logger.exception(
-                "Embedding generation failed on attempt %d: %s", attempt, e
-            )
-            if attempt > retries:
-                raise
-            time.sleep(backoff)
-            backoff *= 2
+    try:
+        manager = get_llm_manager()
+        return manager.generate_embedding(text, model=model)
+    except Exception as e:
+        logger.exception("Embedding generation failed: %s", e)
+        raise
 
 
-__all__ = ["generate_embedding"]
+async def agenerate_embedding(
+    text: str,
+    model: str | None = None,
+) -> List[float]:
+    """Async version of generate_embedding."""
+    try:
+        manager = get_llm_manager()
+        return await manager.agenerate_embedding(text, model=model)
+    except Exception as e:
+        logger.exception("Async embedding generation failed: %s", e)
+        raise
+
+
+__all__ = ["generate_embedding", "agenerate_embedding"]

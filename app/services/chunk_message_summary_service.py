@@ -12,7 +12,8 @@ from app.services.bm25_service import (
 )
 from app.repositories.group_repo import GroupRepository
 from app.repositories.message_repo import MessageRepository
-from app.agents.llm_service import call_llm, parse_llm_topics
+from app.agents.llm_manager import get_llm_manager
+import json
 from app.utils.batching import chunk_list
 from app.utils.text_chunker import split_text_to_chunks
 from app.db.session import SessionLocal
@@ -108,12 +109,10 @@ def summarize_group_messages_background(
     db = SessionLocal()
     try:
         sdt = datetime.combine(_parse_datetime(start_date).date(), dt_time.min)
-        # use milliseconds precision for end-of-day to match stored model format
         edt = datetime.combine(
             _parse_datetime(end_date).date(), dt_time(23, 59, 59, 999000)
         )
 
-        # repositories
         msg_repo = MessageRepository()
         grp_repo = GroupRepository()
         chunk_repo = ChunkMessageSummaryRepository()
@@ -137,7 +136,7 @@ def summarize_group_messages_background(
             day = m.message_time.date()
             days.setdefault(day, []).append(m)
 
-        # get group prompt
+        # get system prompt
         grp = grp_repo.get(db, group_id)
         base_prompt = (
             "你的任務是：將輸入的聊天訊息，依照主題進行整理與歸納，並輸出為「詳細說明」的形式。請依照主題分成最多 15 個章節（sections） === 規則 ==="
@@ -146,7 +145,7 @@ def summarize_group_messages_background(
             else "你的任務是：將輸入的聊天訊息，依照主題進行整理與歸納，並輸出為「詳細說明」的形式。請依照主題分成最多 15 個章節（sections）"
         )
 
-        # input/output spec (concise)
+        # input/output spec
         input_spec = (
             '[{"id": 123, "time": "15:04:05", "user": "Alice", "content": "訊息內容"}]'
         )
@@ -163,7 +162,6 @@ def summarize_group_messages_background(
 
             all_topics = []
             for unit in units:
-                # build snippets
                 snippets = []
                 for mm in unit:
                     time_str = (
@@ -186,8 +184,44 @@ def summarize_group_messages_background(
                 prompt = f"{base_prompt}\n\n=== 輸入格式(JSON) ===\n{input_spec}\n\n=== 輸出格式(JSON) ===\n{output_spec}，回應內容使用中文描述"
 
                 try:
-                    raw = call_llm(prompt, snippets, timeout=120, retries=2)
-                    batch_topics = parse_llm_topics(raw)
+                    snippets_json = (
+                        json.dumps(snippets, ensure_ascii=False)
+                        if snippets is not None
+                        else ""
+                    )
+
+                    llm_manager = get_llm_manager()
+                    try:
+                        raw = llm_manager.invoke(
+                            snippets_json, prompt, max_tokens=12000
+                        )
+                    except Exception as e:
+                        logger.exception("LLM call failed: %s", e)
+                        raise
+
+                    batch_topics = []
+                    try:
+                        if raw:
+                            raw_str = raw.strip()
+                            if raw_str.startswith("```"):
+                                raw_str = raw_str.split("```")[1]
+                                if raw_str.startswith("json"):
+                                    raw_str = raw_str[4:]
+                                raw_str = raw_str.strip()
+                            else:
+                                raw_str = raw_str
+
+                            parsed = json.loads(raw_str)
+                            if isinstance(parsed, list):
+                                batch_topics = parsed
+                            elif isinstance(parsed, dict):
+                                for v in parsed.values():
+                                    if isinstance(v, list):
+                                        batch_topics = v
+                                        break
+                    except Exception:
+                        logger.debug("parse_llm_topics: failed to parse as JSON")
+
                     all_topics.extend(batch_topics)
                 except Exception:
                     logger.exception(

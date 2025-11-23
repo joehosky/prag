@@ -1,4 +1,4 @@
-"""LangChain 1.0.x agent that analyzes RAG results and returns structured answers."""
+"""LangChain agent that analyzes RAG results and returns structured answers."""
 
 from __future__ import annotations
 
@@ -11,6 +11,8 @@ from app.core.config import settings
 from app.tools.query_tool import query_messages_tool
 from app.tools.split_range_tool import split_range
 
+from app.agents.llm_manager import get_llm_manager
+
 logger = logging.getLogger("app.agents.langchain_agent")
 
 try:
@@ -19,7 +21,7 @@ try:
     from langgraph.checkpoint.memory import InMemorySaver
 except Exception as exc:
     raise ImportError(
-        "langchain 1.0.x and provider packages are required for LangChainAgent."
+        "langchain and provider packages are required for LangChainAgent."
     ) from exc
 
 
@@ -41,9 +43,14 @@ class LangChainAgent:
         agent_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.model = model
-        self.llm_instance = llm_instance
         self.use_memory = use_memory
         self.agent_kwargs = agent_kwargs or {}
+
+        if llm_instance is not None:
+            self.llm_instance = llm_instance
+        else:
+            manager = get_llm_manager()
+            self.llm_instance = manager.get_llm_for_agent(model=self.model)
 
     async def run(
         self,
