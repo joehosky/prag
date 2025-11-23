@@ -33,14 +33,14 @@ class QueryResponse(BaseModel):
 async def query_rag(request: QueryRequest):
     from app.services.query_service import QueryService
 
-    svc = QueryService()
     try:
-        result = await query_messages_tool(
+        tool = query_messages_tool(
             group_uniid=request.group_uniid,
-            question=request.question,
             top_k=request.top_k,
-            search_type=request.search_type,
         )
+
+        result = await tool.ainvoke(request.question)
+
         return QueryResponse(
             answer=result.get("answer", ""), items=result.get("items", [])
         )
