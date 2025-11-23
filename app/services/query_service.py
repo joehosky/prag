@@ -466,12 +466,9 @@ class QueryService:
         question: str,
         history: Optional[List[Dict[str, Any]]] = None,
         now_str: Optional[str] = None,
+        model: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Analyze the user's question using the LLM manager.
-
-        This function was moved from `app.agents.llm_service` into the services
-        layer so analysis logic lives with other query orchestration code.
-        """
+        """Analyze the user's question using the LLM manager."""
 
         ctx_text = ""
         if history:
@@ -517,7 +514,13 @@ class QueryService:
 
         try:
             llm_manager = get_llm_manager()
-            raw = llm_manager.invoke(prompt, max_tokens=1024)
+            if model:
+                try:
+                    raw = llm_manager.invoke(prompt, max_tokens=1024, model=model)
+                except TypeError:
+                    raw = llm_manager.invoke(prompt, max_tokens=1024)
+            else:
+                raw = llm_manager.invoke(prompt, max_tokens=1024)
 
             raw = raw.strip()
             if raw.startswith("```"):

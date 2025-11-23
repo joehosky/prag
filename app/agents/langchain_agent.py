@@ -59,8 +59,9 @@ class LangChainAgent:
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
         top_k: int = 50,
-        use_agent: bool = True,
         analysis: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None,
+        use_agent: bool = True,
     ) -> Dict[str, Any]:
         """Run the LangChain agent and return analyzed results.
 
@@ -94,17 +95,6 @@ class LangChainAgent:
 
         tools: List[Any] = [query_messages, split_range]
 
-        if self.llm_instance is not None:
-            llm_obj = self.llm_instance
-        else:
-            if not settings.openai_api_key:
-                raise RuntimeError(
-                    "OpenAI API key not configured in settings.openai_api_key"
-                )
-            llm_obj = ChatOpenAI(
-                model=self.model, openai_api_key=settings.openai_api_key
-            )
-
         checkpointer = InMemorySaver() if self.use_memory else None
 
         create_kwargs = dict(self.agent_kwargs)
@@ -118,6 +108,23 @@ class LangChainAgent:
             [getattr(t, "name", getattr(t, "__name__", str(t))) for t in tools],
         )
 
+        effective_model = model or self.model
+
+        if self.llm_instance is not None and model is None:
+            llm_obj = self.llm_instance
+        else:
+            if not settings.openai_api_key:
+                raise RuntimeError(
+                    "OpenAI API key not configured in settings.openai_api_key"
+                )
+            try:
+                manager = get_llm_manager()
+                llm_obj = manager.get_llm_for_agent(model=effective_model)
+            except Exception:
+                llm_obj = ChatOpenAI(
+                    model=effective_model, openai_api_key=settings.openai_api_key
+                )
+
         try:
             agent = create_agent(model=llm_obj, tools=tools, **create_kwargs)
         except Exception as e:
@@ -126,18 +133,17 @@ class LangChainAgent:
 
         try:
             # Enhanced system message to guide agent's analysis
-            sys_msg = (
-                fsys_msg
-            ) = f"""You are an intelligent assistant analyzing LINE group messages.
+            sys_msg = f"""You are an intelligent assistant analyzing LINE group messages.
 
                     Your workflow:
                     1. Use the query_messages tool to search for relevant messages
                     2. Analyze the returned results carefully, Pay attention to the 'score' field (0-100)
-                    3. Determine if you can answer the question:
+                        3. Determine if you can answer the question:
                     - If you have at least one result with score > 30 that relates to the question → Provide answer
                     - If all results have score < 30 OR none relate to the question → Cannot answer
-                    4. Synthesize your response accordingly
-                    5. answer MUST be "繁體中文"
+                        4. Synthesize your response accordingly
+
+                        5. answer MUST be "繁體中文"
 
                     CRITICAL: You MUST respond in the following JSON format:
                     {{

@@ -60,8 +60,8 @@ async def query_agent(request: QueryRequest):
             start_time=start_time,
             end_time=end_time,
             top_k=top_k,
-            use_agent=True,
             analysis=analysis,
+            use_agent=True,
         )
     except Exception as e:
         return QueryResponse(answer="", confidence=0.0, metadata={"error": str(e)})
