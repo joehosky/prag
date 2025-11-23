@@ -71,7 +71,7 @@ class LangChainAgent:
         """
 
         if analysis is None:
-            from app.agents.llm_service import analyze_query
+            from app.services.query_service import QueryService
 
             now = (
                 __import__("datetime")
@@ -79,7 +79,10 @@ class LangChainAgent:
                 .astimezone()
                 .strftime("%Y-%m-%d %H:%M:%S")
             )
-            analysis = analyze_query(question, history=None, now_str=now)
+
+            svc = QueryService()
+
+            analysis = svc.analyze_query(question, history=None, now_str=now)
 
         query_messages = query_messages_tool(
             group_uniid=group_uniid,

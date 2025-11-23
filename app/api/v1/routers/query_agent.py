@@ -7,7 +7,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from app.agents.langchain_agent import LangChainAgent
-from app.agents.llm_service import analyze_query
+from app.services.query_service import QueryService
 from datetime import datetime
 
 router = APIRouter()
@@ -33,8 +33,10 @@ async def query_agent(request: QueryRequest):
     top_k = int(request.top_k or 50)
 
     try:
+        svc = QueryService()
+
         now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
-        analysis = analyze_query(question, history=None, now_str=now)
+        analysis = svc.analyze_query(question, history=None, now_str=now)
     except Exception:
         analysis = None
 

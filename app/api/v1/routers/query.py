@@ -31,8 +31,6 @@ class QueryResponse(BaseModel):
 
 @router.post("/", response_model=QueryResponse)
 async def query_rag(request: QueryRequest):
-    from app.services.query_service import QueryService
-
     try:
         tool = query_messages_tool(
             group_uniid=request.group_uniid,
