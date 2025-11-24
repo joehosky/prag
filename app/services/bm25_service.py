@@ -88,17 +88,33 @@ class BM25Service:
     def _load(self) -> None:
         try:
             if os.path.exists(self.index_path):
-                with open(self.index_path, "rb") as f:
-                    data = pickle.load(f)
-                    docs = data.get("docs", {}) if isinstance(data, dict) else {}
-                    # ensure structure is doc_id -> (content, payload)
-                    self.docs = docs
-                    self._rebuild_index()
-                    logger.debug(
-                        "BM25 index loaded from %s (docs=%d)",
+                try:
+                    with open(self.index_path, "rb") as f:
+                        data = pickle.load(f)
+                        docs = data.get("docs", {}) if isinstance(data, dict) else {}
+                        # ensure structure is doc_id -> (content, payload)
+                        self.docs = docs
+                        self._rebuild_index()
+                        logger.debug(
+                            "BM25 index loaded from %s (docs=%d)",
+                            self.index_path,
+                            len(self.docs),
+                        )
+                except (EOFError, pickle.UnpicklingError, ValueError) as e:
+                    logger.warning(
+                        "BM25 index at %s appears corrupted (%s). Rebuilding empty index.",
                         self.index_path,
-                        len(self.docs),
+                        type(e).__name__,
                     )
+                    self.docs = {}
+                    self._rebuild_index()
+                    try:
+                        self._persist()
+                    except Exception:
+                        logger.exception(
+                            "Failed to persist rebuilt empty BM25 index to %s",
+                            self.index_path,
+                        )
             else:
                 # ensure directory exists
                 os.makedirs(os.path.dirname(self.index_path), exist_ok=True)
@@ -106,9 +122,30 @@ class BM25Service:
             logger.exception("Failed to load BM25 index from %s", self.index_path)
 
     def _persist(self) -> None:
+        # Use atomic write: write to a temp file in same directory, then replace.
         try:
-            with open(self.index_path, "wb") as f:
+            dirpath = os.path.dirname(self.index_path)
+            if dirpath and not os.path.exists(dirpath):
+                os.makedirs(dirpath, exist_ok=True)
+
+            tmp_path = f"{self.index_path}.tmp"
+            # write to temp file first
+            with open(tmp_path, "wb") as f:
                 pickle.dump({"docs": self.docs}, f)
+
+            # atomic replace
+            try:
+                os.replace(tmp_path, self.index_path)
+            except Exception:
+                # as a fallback, try os.rename
+                try:
+                    os.rename(tmp_path, self.index_path)
+                except Exception:
+                    logger.exception(
+                        "Failed to move temp BM25 index %s -> %s",
+                        tmp_path,
+                        self.index_path,
+                    )
         except Exception:
             logger.exception("Failed to persist BM25 index to %s", self.index_path)
 

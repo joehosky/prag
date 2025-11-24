@@ -31,3 +31,8 @@ class MessageSummaryTagRepository(BaseRepository[MessageSummaryTag]):
             MessageSummaryTag.daily_summary.is_(False),
         )
         return db.scalars(stmt).all()
+
+    def list_all(self, db: Session) -> List[MessageSummaryTag]:
+        """Return all MessageSummaryTag rows."""
+        stmt = select(MessageSummaryTag)
+        return db.scalars(stmt).all()
