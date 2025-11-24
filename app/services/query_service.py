@@ -33,7 +33,6 @@ class QueryService:
         start_time: Optional[str] = None,
         end_time: Optional[str] = None,
         top_k: int = 50,
-        search_type: str = "hybrid",
         analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         total_start = time.time()
@@ -73,10 +72,12 @@ class QueryService:
 
         resolved = analysis.get("resolvedQuery")
         keywords = analysis.get("keywords") or []
+        queryType = analysis.get("queryType", "QueryTypeExact")
 
         logger.info(
-            "query_group:start group_uniid=%s gid=%s resolved=%s keywords=%s start_time=%s end_time=%s",
+            "query_group: group_uniid=%s intent=%s gid=%s resolved=%s keywords=%s start_time=%s end_time=%s",
             group_uniid,
+            queryType,
             gid,
             resolved,
             keywords,
