@@ -137,19 +137,45 @@ def summarize_group_messages_background(
             days.setdefault(day, []).append(m)
 
         # get system prompt
+        core_rules = """=== Key Rules ===
+                        1. Each topic MUST be an independent JSON element (do NOT merge into a summary)
+                        2. Identify up to 15 different topics
+                        3. Each topic should only contain related message ids
+                        4. Messages of the same topic may not be consecutive; group them correctly
+
+                        === Topic Classification Standards ===
+                        - Same event/same discussion thread = same topic
+                        - Different matters/topics = different topics
+                        - Example topics: "Appointment scheduling", "Data delivery", "Expense reimbursement", "Problem discussion", etc.
+
+                        === Output Requirements ===
+                        - MUST output a JSON array with one element per topic
+                        - detail: A long, detailed explanation in Chinese, preserving all key information from the original messages
+                        - ids: Array of message ids belonging to this topic
+                        - startTime/endTime: Time range of this topic
+                        """
+
+        # 組合 base_prompt
         grp = grp_repo.get(db, group_id)
-        base_prompt = (
-            "你的任務是：將輸入的聊天訊息，依照主題進行整理與歸納，並輸出為「詳細說明」的形式。請依照主題分成最多 15 個章節（sections） === 規則 ==="
-            + grp.chunk_summary_prompt
-            if grp and grp.chunk_summary_prompt
-            else "你的任務是：將輸入的聊天訊息，依照主題進行整理與歸納，並輸出為「詳細說明」的形式。請依照主題分成最多 15 個章節（sections）"
-        )
+        if grp and grp.chunk_summary_prompt:
+            # 有自訂 prompt：保留原有 + 加上核心規則
+            base_prompt = (
+                grp.chunk_summary_prompt
+                + "\n\nClassify chat messages by topic.\n\n"
+                + core_rules
+            )
+        else:
+            # 無自訂 prompt：使用預設任務描述 + 核心規則
+            base_prompt = "Your task: Classify chat messages by topic.\n\n" + core_rules
 
         # input/output spec
-        input_spec = (
-            '[{"id": 123, "time": "15:04:05", "user": "Alice", "content": "訊息內容"}]'
-        )
-        output_spec = '[{"detail": "...", "ids": [123], "startTime": "15:04:05", "endTime": "18:00:25"}]'
+        input_spec = '[{"id": 123, "time": "15:04:05", "user": "Alice", "content": "Message content"}]'
+
+        output_spec = """[
+        {"detail": "A long, detailed explanation in Chinese about topic 1, preserving all key information from the original messages", "ids": [123, 124, 125], "startTime": "10:05:00", "endTime": "10:15:00"},
+        {"detail": "A long, detailed explanation in Chinese about topic 2, preserving all key information from the original messages", "ids": [126, 130, 135], "startTime": "11:20:00", "endTime": "11:45:00"},
+        {"detail": "A long, detailed explanation in Chinese about topic 3, preserving all key information from the original messages", "ids": [140, 141], "startTime": "14:10:00", "endTime": "14:20:00"}
+        ]"""
 
         total = 0
         for day, msgs in days.items():
@@ -181,7 +207,19 @@ def summarize_group_messages_background(
                     )
 
                 # construct prompt (include input/output spec)
-                prompt = f"{base_prompt}\n\n=== 輸入格式(JSON) ===\n{input_spec}\n\n=== 輸出格式(JSON) ===\n{output_spec}，回應內容使用中文描述"
+                prompt = f"""{base_prompt}
+                        === 輸入格式(JSON) ===
+                        {input_spec}
+
+                        === 輸出格式(JSON) ===
+                        {output_spec}
+
+                        === 重要提醒 ===
+                        ❌ 錯誤示範：輸出一個元素包含所有內容的總結
+                        ✅ 正確示範：輸出多個元素，每個元素代表一個獨立主題
+
+                        請將訊息依主題拆分，輸出純 JSON 陣列（不要 markdown 標記）。
+                        回應內容使用繁體中文描述。"""
 
                 try:
                     snippets_json = (
