@@ -75,11 +75,13 @@ class QueryService:
         keywords = analysis.get("keywords") or []
 
         logger.info(
-            "query_group:start group_uniid=%s gid=%s resolved=%s keywords=%s",
+            "query_group:start group_uniid=%s gid=%s resolved=%s keywords=%s start_time=%s end_time=%s",
             group_uniid,
             gid,
             resolved,
             keywords,
+            start_time,
+            end_time,
         )
 
         # 2) embedding for query
@@ -102,63 +104,38 @@ class QueryService:
         try:
             qsvc = QdrantService()
             if qvec:
-                qfilter = None
-                try:
-                    must_filters = []
-                    # group id filter
-                    if gid is not None:
-                        try:
-                            match_value = int(gid)
-                            must_filters.append(
-                                qmodels.FieldCondition(
-                                    key="group_id",
-                                    match=qmodels.MatchValue(value=match_value),
-                                )
-                            )
-                        except Exception:
-                            logger.debug("query_group: invalid gid for filter: %s", gid)
+                must_filters = []
 
-                    # date range filter: use only date portion (YYYY-MM-DD)
-                    try:
-                        if (start_time and str(start_time).strip()) or (
-                            end_time and str(end_time).strip()
-                        ):
-                            gte = None
-                            lte = None
-                            if start_time and str(start_time).strip():
-                                try:
-                                    gte = str(start_time).strip().split(" ")[0]
-                                except Exception:
-                                    gte = str(start_time).strip()
-                            if end_time and str(end_time).strip():
-                                try:
-                                    lte = str(end_time).strip().split(" ")[0]
-                                except Exception:
-                                    lte = str(end_time).strip()
+                # group id filter
+                if gid is not None:
+                    must_filters.append(
+                        {"key": "group_id", "match": {"value": int(gid)}}
+                    )
 
-                            # build range only with provided bounds
-                            range_kwargs = {}
-                            if gte is not None:
-                                range_kwargs["gte"] = gte
-                            if lte is not None:
-                                range_kwargs["lte"] = lte
+                if (start_time and str(start_time).strip()) or (
+                    end_time and str(end_time).strip()
+                ):
+                    time_filter = {"key": "date", "range": {}}
 
-                            if range_kwargs:
-                                must_filters.append(
-                                    qmodels.FieldCondition(
-                                        key="date",
-                                        range=qmodels.Range(**range_kwargs),
-                                    )
-                                )
-                    except Exception:
-                        logger.exception("Failed to build date range filter")
+                    if start_time and str(start_time).strip():
+                        time_filter["range"]["gte"] = (
+                            str(start_time).strip().split(" ")[0]
+                        )
 
-                    if must_filters:
-                        qfilter = qmodels.Filter(must=must_filters)
-                    else:
-                        qfilter = None
-                except Exception:
-                    qfilter = None
+                    if end_time and str(end_time).strip():
+                        time_filter["range"]["lte"] = (
+                            str(end_time).strip().split(" ")[0]
+                        )
+
+                    must_filters.append(time_filter)
+
+                    logger.debug("Building date range filter: %s", time_filter)
+
+                query_filter = None
+                if must_filters:
+                    query_filter = {"must": must_filters}
+
+                logger.debug("Qdrant filter: %s", query_filter)
 
                 res = qsvc.client.search(
                     collection_name=qsvc.collection,
@@ -166,7 +143,7 @@ class QueryService:
                     limit=top_k,
                     with_payload=True,
                     with_vectors=False,
-                    query_filter=qfilter,
+                    query_filter=query_filter,
                 )
 
                 for hit in res:
@@ -175,6 +152,7 @@ class QueryService:
                     qdrant_hits.append(
                         {"id": pid, "score": float(getattr(hit, "score", 0.0))}
                     )
+
                 logger.debug(
                     "query_group:qdrant_search returned %d hits",
                     len(qdrant_hits),
