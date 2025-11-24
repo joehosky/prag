@@ -12,6 +12,7 @@ from app.services.bm25_service import (
 )
 from app.repositories.group_repo import GroupRepository
 from app.repositories.message_repo import MessageRepository
+from app.repositories.message_summary_tag_repo import MessageSummaryTagRepository
 from app.agents.llm_manager import get_llm_manager
 import json
 from app.utils.batching import chunk_list
@@ -93,7 +94,7 @@ def _parse_datetime(value: str) -> datetime:
 
 
 def summarize_group_messages_background(
-    group_id: int, start_date: str, end_date: str
+    group_id: int, start_date: str, end_date: str, overlapp: bool = False
 ) -> None:
     """Background task to summarize messages for a group in the date range.
 
@@ -182,6 +183,29 @@ def summarize_group_messages_background(
             day_start = datetime.combine(day, dt_time.min)
             day_end = datetime.combine(day, dt_time(23, 59, 59, 999000))
 
+            if not overlapp:
+                try:
+                    tag_repo = MessageSummaryTagRepository()
+                    tag_found = None
+                    for t in tag_repo.list_by_group(db, group_id):
+                        st = getattr(t, "summary_time", None)
+                        if st and getattr(st, "date", lambda: None)() == day:
+                            tag_found = t
+                            break
+                    if tag_found and getattr(tag_found, "chunk_summary", False):
+                        logger.info(
+                            "Skipping day %s for group %s because chunk_summary already true",
+                            day,
+                            group_id,
+                        )
+                        continue
+                except Exception:
+                    logger.exception(
+                        "Failed to inspect MessageSummaryTag for group %s day %s",
+                        group_id,
+                        day,
+                    )
+
             # split into units of up to 20 messages
             objs = msgs
             units = list(chunk_list(objs, 20))
@@ -257,6 +281,13 @@ def summarize_group_messages_background(
                                     if isinstance(v, list):
                                         batch_topics = v
                                         break
+
+                        logger.info(
+                            "LLM returned %d topics for unit (day=%s, group=%s)",
+                            len(batch_topics),
+                            day,
+                            group_id,
+                        )
                     except Exception:
                         logger.debug("parse_llm_topics: failed to parse as JSON")
 
@@ -267,9 +298,55 @@ def summarize_group_messages_background(
                     )
                     continue
 
-            # if no topics, mark as done (TODO: update MessageSummaryTag if exists)
             if len(all_topics) == 0:
                 logger.info("No topics returned for group %s day %s", group_id, day)
+                try:
+                    tag_repo = MessageSummaryTagRepository()
+                    tag_found = None
+                    for t in tag_repo.list_by_group(db, group_id):
+                        st = getattr(t, "summary_time", None)
+                        if st and getattr(st, "date", lambda: None)() == day:
+                            tag_found = t
+                            break
+
+                    if tag_found:
+                        try:
+                            # ensure summary_time is present and chunk_summary set
+                            if not getattr(tag_found, "summary_time", None):
+                                tag_found.summary_time = day_start
+                            tag_found.chunk_summary = True
+                            db.add(tag_found)
+                            db.commit()
+                        except Exception:
+                            logger.exception(
+                                "Failed to update MessageSummaryTag for group %s day %s",
+                                group_id,
+                                day,
+                            )
+                    else:
+                        try:
+                            tag_repo.create(
+                                db,
+                                {
+                                    "group_id": group_id,
+                                    "summary_time": day_start,
+                                    "chunk_summary": True,
+                                },
+                            )
+                            db.commit()
+                        except Exception:
+                            logger.exception(
+                                "Failed to create MessageSummaryTag for group %s day %s",
+                                group_id,
+                                day,
+                            )
+                except Exception:
+                    logger.exception(
+                        "Failed to update/create MessageSummaryTag for group %s day %s",
+                        group_id,
+                        day,
+                    )
+
                 continue
 
             # build id->content map
@@ -338,6 +415,13 @@ def summarize_group_messages_background(
                     item = chunk_repo.create_summary(db, payload)
                     db.commit()
                     db.refresh(item)
+                    logger.info(
+                        "Created ChunkMessageSummary id=%s chunk_id=%s group=%s day=%s",
+                        getattr(item, "id", None),
+                        getattr(item, "chunk_id", None),
+                        group_id,
+                        day,
+                    )
 
                     # prepare for embedding / qdrant: split message_content into chunks
                     if item.message_content:
@@ -421,6 +505,72 @@ def summarize_group_messages_background(
             except Exception:
                 logger.exception(
                     "Failed to schedule BM25 for group %s day %s", group_id, day
+                )
+
+            # mark MessageSummaryTag.chunk_summary = True for this day
+            try:
+                tag_repo = MessageSummaryTagRepository()
+                tag_found = None
+                for t in tag_repo.list_by_group(db, group_id):
+                    st = getattr(t, "summary_time", None)
+                    if st and getattr(st, "date", lambda: None)() == day:
+                        tag_found = t
+                        break
+
+                if tag_found:
+                    logger.debug(
+                        "Found existing MessageSummaryTag id=%s summary_time=%s chunk_summary=%s",
+                        getattr(tag_found, "id", None),
+                        getattr(tag_found, "summary_time", None),
+                        getattr(tag_found, "chunk_summary", None),
+                    )
+                    try:
+                        # ensure summary_time is present and chunk_summary set
+                        if not getattr(tag_found, "summary_time", None):
+                            tag_found.summary_time = day_start
+                        tag_found.chunk_summary = True
+                        db.add(tag_found)
+                        db.commit()
+                        logger.info(
+                            "Updated MessageSummaryTag id=%s for group %s day %s",
+                            getattr(tag_found, "id", None),
+                            group_id,
+                            day,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to update MessageSummaryTag for group %s day %s",
+                            group_id,
+                            day,
+                        )
+                else:
+                    try:
+                        created = tag_repo.create(
+                            db,
+                            {
+                                "group_id": group_id,
+                                "summary_time": day_start,
+                                "chunk_summary": True,
+                            },
+                        )
+                        db.commit()
+                        logger.info(
+                            "Created MessageSummaryTag id=%s for group %s day %s",
+                            getattr(created, "id", None),
+                            group_id,
+                            day,
+                        )
+                    except Exception:
+                        logger.exception(
+                            "Failed to create MessageSummaryTag for group %s day %s",
+                            group_id,
+                            day,
+                        )
+            except Exception:
+                logger.exception(
+                    "Failed to update/create MessageSummaryTag for group %s day %s",
+                    group_id,
+                    day,
                 )
 
             total += len(all_topics)
