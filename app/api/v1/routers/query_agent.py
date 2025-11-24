@@ -40,7 +40,7 @@ async def query_agent(request: QueryRequest):
     except Exception:
         analysis = None
 
-    agent = LangChainAgent()
+    agent = LangChainAgent(model="gemini-2.0-flash")
     try:
         start_time = None
         end_time = None

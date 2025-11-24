@@ -82,15 +82,15 @@ class LLMManager:
                     max_tokens=tokens,
                     openai_api_key=settings.openai_api_key,
                 )
-            # increase new provider for future expansion
-            # elif self.provider == "gemini":
-            #     from langchain_google_genai import ChatGoogleGenerativeAI
-            #     self._llm_cache[cache_key] = ChatGoogleGenerativeAI(
-            #         model=model,
-            #         temperature=temp,
-            #         max_output_tokens=tokens,
-            #         google_api_key=settings.gemini_api_key,
-            #     )
+            elif self.provider == "gemini":
+                from langchain_google_genai import ChatGoogleGenerativeAI
+
+                self._llm_cache[cache_key] = ChatGoogleGenerativeAI(
+                    model=model,
+                    temperature=temp,
+                    max_output_tokens=tokens,
+                    google_api_key=settings.gemini_api_key,
+                )
             else:
                 raise ValueError(f"Unsupported provider: {self.provider}")
 
@@ -101,20 +101,10 @@ class LLMManager:
         model = model or self.default_embedding_model
 
         if model not in self._embedding_cache:
-            if self.provider == "openai":
-                self._embedding_cache[model] = OpenAIEmbeddings(
-                    model=model,
-                    openai_api_key=settings.openai_api_key,
-                )
-            # increase new provider for future expansion
-            # elif self.provider == "gemini":
-            #     from langchain_google_genai import GoogleGenerativeAIEmbeddings
-            #     self._embedding_cache[model] = GoogleGenerativeAIEmbeddings(
-            #         model=model,
-            #         google_api_key=settings.gemini_api_key,
-            #     )
-            else:
-                raise ValueError(f"Unsupported provider: {self.provider}")
+            self._embedding_cache[model] = OpenAIEmbeddings(
+                model=model,
+                openai_api_key=settings.openai_api_key,
+            )
 
         return self._embedding_cache[model]
 
@@ -302,7 +292,11 @@ def get_llm_manager() -> LLMManager:
     """Get or create singleton default LLM manager."""
     global _default_manager
     if _default_manager is None:
-        _default_manager = LLMManager()
+        _default_manager = LLMManager(
+            default_model="gemini-2.0-flash",
+            default_embedding_model="opentext-embedding-3-small",
+            provider="gemini",
+        )
     return _default_manager
 
 

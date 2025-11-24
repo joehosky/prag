@@ -20,6 +20,10 @@ class Settings(BaseSettings):
     openai_model: str = "gpt-4.1-mini"
     openai_embedding_model: str = "text-embedding-3-small"
 
+    # Gemini API
+    gemini_api_key: str = ""
+    gemini_model: str = "gemini-2.0-flash"
+
     # Application
     app_env: str = "development"
     app_host: str = "127.0.0.1"

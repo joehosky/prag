@@ -37,7 +37,7 @@ class LangChainAgent:
 
     def __init__(
         self,
-        model: str = "gpt-4o-mini",
+        model: str = "gpt-4.1-mini",
         llm_instance: Optional[Any] = None,
         use_memory: bool = False,
         agent_kwargs: Optional[Dict[str, Any]] = None,
