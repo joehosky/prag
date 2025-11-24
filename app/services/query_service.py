@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import asyncio
+import time
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 import os
@@ -35,6 +36,11 @@ class QueryService:
         search_type: str = "hybrid",
         analysis: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
+        total_start = time.time()
+        step_times: Dict[str, float] = {}
+
+        # Step 0: Group lookup
+        step_start = time.time()
         gid = None
         db = None
         try:
@@ -50,8 +56,10 @@ class QueryService:
                     db.close()
                 except Exception:
                     pass
+        step_times["group_lookup"] = time.time() - step_start
 
         # 1) LLM analysis
+        step_start = time.time()
         if analysis is None:
             now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
             analysis = self.analyze_query(question, history=None, now_str=now)
@@ -61,6 +69,7 @@ class QueryService:
                 start_time = an_start
             if an_end and str(an_end).strip():
                 end_time = an_end
+        step_times["llm_analysis"] = time.time() - step_start
 
         resolved = analysis.get("resolvedQuery")
         keywords = analysis.get("keywords") or []
@@ -74,21 +83,21 @@ class QueryService:
         )
 
         # 2) embedding for query
+        step_start = time.time()
         try:
             qvec = await asyncio.to_thread(generate_embedding, resolved)
         except Exception:
             logger.exception("Failed to generate embedding for query")
             qvec = None
+        step_times["embedding"] = time.time() - step_start
 
-        try:
-            logger.info(
-                "query_group:qvec len=%s",
-                len(qvec) if qvec else 0,
-            )
-        except Exception:
-            logger.exception("Failed to log qvec summary")
+        logger.debug(
+            "query_group:qvec len=%s",
+            len(qvec) if qvec else 0,
+        )
 
         # 3) Qdrant search
+        step_start = time.time()
         qdrant_hits: List[Dict] = []
         try:
             qsvc = QdrantService()
@@ -166,7 +175,7 @@ class QueryService:
                     qdrant_hits.append(
                         {"id": pid, "score": float(getattr(hit, "score", 0.0))}
                     )
-                logger.info(
+                logger.debug(
                     "query_group:qdrant_search returned %d hits",
                     len(qdrant_hits),
                 )
@@ -174,17 +183,19 @@ class QueryService:
             logger.exception("Qdrant search failed")
         else:
             if qvec and not qdrant_hits:
-                logger.info(
+                logger.debug(
                     "query_group:qdrant_search returned no hits for given vector and filter (gid=%s)",
                     gid,
                 )
+        step_times["qdrant_search"] = time.time() - step_start
 
         # 4) BM25 search
+        step_start = time.time()
         bm_hits: List[Dict] = []
         try:
             bm = BM25Service()
             pairs = bm.search(resolved, top_k=top_k, group_id=gid)
-            logger.info(
+            logger.debug(
                 "query_group:bm25 returned %d pairs for group_id=%s",
                 len(pairs) if pairs else 0,
                 gid,
@@ -269,9 +280,11 @@ class QueryService:
         except Exception:
             logger.exception("BM25 search failed")
         finally:
-            logger.info("query_group:bm25_hits count=%d", len(bm_hits))
+            logger.debug("query_group:bm25_hits count=%d", len(bm_hits))
+        step_times["bm25_search"] = time.time() - step_start
 
         # 5) build candidate set
+        step_start = time.time()
         candidates = []
         seen = set()
         for h in qdrant_hits:
@@ -282,8 +295,10 @@ class QueryService:
             if h["id"] and h["id"] not in seen:
                 candidates.append(h["id"])
                 seen.add(h["id"])
+        step_times["build_candidates"] = time.time() - step_start
 
         # 6) fetch chunk summaries
+        step_start = time.time()
         db = SessionLocal()
         try:
             repo = ChunkMessageSummaryRepository()
@@ -358,6 +373,7 @@ class QueryService:
 
             # align q_ids list as ints for fuse
             q_ids = [int(k) for k in list(chunk_map.keys())]
+            step_times["fetch_chunks"] = time.time() - step_start
 
             logger.debug(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
@@ -369,6 +385,7 @@ class QueryService:
             )
 
             # 7) fuse
+            step_start = time.time()
             qtype = analysis.get("queryType", "QueryTypeSemantics")
             if qtype == "QueryTypeSemantics":
                 alpha, beta, gamma, delta = 0.50, 0.30, 0.15, 0.05
@@ -395,18 +412,22 @@ class QueryService:
                 delta,
             )
             fused_filtered = [f for f in fused if f.get("final", 0.0) >= 0.3]
+            step_times["fuse_scores"] = time.time() - step_start
 
-            logger.info(
+            logger.debug(
                 "query_group:fused count=%d fused_filtered=%d",
                 len(fused),
                 len(fused_filtered),
             )
 
+            # 8) MMR
+            step_start = time.time()
             mmr_selected = mmr(
                 fused_filtered, chunk_vectors, lambd, min(max_results, top_k)
             )
 
             mmr_selected = [m for m in mmr_selected if (m.get("final", 0.0) >= 0.3)]
+            step_times["mmr"] = time.time() - step_start
 
             logger.debug(
                 "query_group:mmr_selected count=%d items=%s",
@@ -414,7 +435,8 @@ class QueryService:
                 mmr_selected,
             )
 
-            # build answer from selected: create items list with chunk_id, score and text
+            # 9) build answer
+            step_start = time.time()
             items = []
             for item in mmr_selected:
                 cid = item.get("id")
@@ -445,6 +467,22 @@ class QueryService:
                 items.append({"chunk_id": chunk_id, "score": score_int, "text": text})
 
             answer = "\n\n".join([it.get("text", "") for it in items])
+            step_times["build_answer"] = time.time() - step_start
+
+            # Log timing summary
+            # total_elapsed = time.time() - total_start
+            # logger.info(
+            #     "query_group:timing total=%.2fs | llm_analysis=%.2fs | embedding=%.2fs | qdrant=%.2fs | bm25=%.2fs | fetch_chunks=%.2fs | fuse=%.2fs | mmr=%.2fs | build_answer=%.2fs",
+            #     total_elapsed,
+            #     step_times.get("llm_analysis", 0),
+            #     step_times.get("embedding", 0),
+            #     step_times.get("qdrant_search", 0),
+            #     step_times.get("bm25_search", 0),
+            #     step_times.get("fetch_chunks", 0),
+            #     step_times.get("fuse_scores", 0),
+            #     step_times.get("mmr", 0),
+            #     step_times.get("build_answer", 0),
+            # )
 
             # Return only answer and per-item chunk_id/score/text to simplify caller parsing
             return {"answer": answer, "items": items}
@@ -469,6 +507,7 @@ class QueryService:
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Analyze the user's question using the LLM manager."""
+        step_start = time.time()
 
         ctx_text = ""
         if history:
@@ -530,6 +569,10 @@ class QueryService:
                 raw = raw.strip()
 
             parsed = json.loads(raw)
+
+            elapsed = time.time() - step_start
+            logger.debug("analyze_query:completed in %.2fs", elapsed)
+
             return {
                 "queryType": parsed.get("queryType") or "general",
                 "startTime": parsed.get("startTime"),

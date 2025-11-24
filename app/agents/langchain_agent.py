@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 import json
 import re
 from typing import Any, Dict, List, Optional
@@ -12,6 +13,8 @@ from app.tools.query_tool import query_messages_tool
 from app.tools.split_range_tool import split_range
 
 from app.agents.llm_manager import get_llm_manager
+
+from app.utils.agent_log import log_agent_result, DetailedTimingCallback
 
 logger = logging.getLogger("app.agents.langchain_agent")
 
@@ -37,7 +40,7 @@ class LangChainAgent:
 
     def __init__(
         self,
-        model: str = "gpt-4.1-mini",
+        model: str = "gpt-4o-mini",
         llm_instance: Optional[Any] = None,
         use_memory: bool = False,
         agent_kwargs: Optional[Dict[str, Any]] = None,
@@ -132,6 +135,8 @@ class LangChainAgent:
             raise
 
         try:
+            timing_callback = DetailedTimingCallback()
+
             # Enhanced system message to guide agent's analysis
             sys_msg = f"""You are an intelligent assistant analyzing LINE group messages.
 
@@ -187,12 +192,18 @@ class LangChainAgent:
                     {"role": "user", "content": question},
                 ],
             }
-            configurable = {"configurable": {"thread_id": group_uniid}}
+            configurable = {
+                "configurable": {"thread_id": group_uniid},
+                "callbacks": [timing_callback],
+            }
 
             logger.debug("Calling agent.ainvoke: question=%s", question)
 
             result = await agent.ainvoke(payload, configurable)
-            logger.debug("agent.ainvoke returned")
+
+            log_agent_result(result, enabled=True)
+
+            timing_callback.log_summary()
 
         except Exception as exc:
             logger.exception(
