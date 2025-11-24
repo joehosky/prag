@@ -1,6 +1,5 @@
 """
 Query_messages tool that can be used by multiple agents or services.
-
 """
 
 from typing import Any, Dict, Optional
@@ -17,27 +16,17 @@ def query_messages_tool(
 ):
     """Create a query_messages tool with bound context parameters.
 
-    This factory function creates a LangChain tool that has already bound
-    the group_uniid, start_time, end_time, top_k, and analysis parameters,
-    so the LLM only needs to provide the question_text parameter.
+    The tool allows agent to override start_time/end_time for multi-range queries.
 
     Args:
         group_uniid: Unique identifier for the LINE group
-        start_time: Search start time (optional)
-        end_time: Search end time (optional)
+        start_time: Default search start time (can be overridden)
+        end_time: Default search end time (can be overridden)
         top_k: Maximum number of results to return
         analysis: Query analysis result (optional)
 
     Returns:
-        LangChain tool with bound context parameters
-
-    Example:
-        >>> tool = query_messages_tool(
-        ...     group_uniid="group_abc123",
-        ...     top_k=10
-        ... )
-        >>> # Use in agent
-        >>> agent = create_agent(model=llm, tools=[tool])
+        LangChain tool that accepts optional time range overrides
     """
     try:
         from langchain_core.tools import tool
@@ -45,7 +34,11 @@ def query_messages_tool(
         from langchain.tools import tool
 
     @tool
-    async def query_messages(question_text: str) -> Dict[str, Any]:
+    async def query_messages(
+        question_text: str,
+        override_start_time: Optional[str] = None,
+        override_end_time: Optional[str] = None,
+    ) -> Dict[str, Any]:
         """Search and retrieve relevant LINE messages based on the question.
 
         This tool performs semantic search through the LINE group's message history
@@ -54,45 +47,50 @@ def query_messages_tool(
         Args:
             question_text: The search query or question. Use natural language or
                         keywords to describe what you're looking for.
+            override_start_time: Optional start time to override the default range.
+                                Format: 'YYYY-MM-DD HH:MM:SS'
+            override_end_time: Optional end time to override the default range.
+                              Format: 'YYYY-MM-DD HH:MM:SS'
 
         Returns:
             A dictionary containing:
-            - answer: A string containing all matched chunk messages, separated by
-                    double newlines (\\n\\n). Each segment is a message chunk that
-                    matches the query.
-            - items: A list of match details, where each item contains:
-              * chunk_id: Unique identifier for the message chunk
-              * score: Relevance score (0 to 100, higher is more relevant)
-              * text: The actual message content (corresponds to a segment in 'answer')
-            - metadata: Additional search information (optional)
+            - answer: A string containing all matched chunk messages
+            - items: A list of match details with chunk_id, score, and text
+            - metadata: Additional search information
 
         Important notes:
             - Results are ranked by relevance score (highest first)
             - Scores above 80 indicate highly relevant matches
-            - Scores between 60-80 are moderately relevant
-            - Scores below 60 may not be very relevant
-            - The 'answer' field contains all messages concatenated for easy reading
-            - The 'items' field provides structured data with scores for each chunk
-            - Use high-scoring items (score > 70) for the most accurate information
+            - Use override_start_time/override_end_time for querying specific time ranges
+            - When querying multiple time periods, call this tool multiple times with
+              different time overrides
 
-        Example return structure:
-            {
-                "answer": "First message chunk\\n\\nSecond message chunk\\n\\nThird chunk",
-                "items": [
-                    {"chunk_id": "msg_001", "score": 95, "text": "First message chunk"},
-                    {"chunk_id": "msg_002", "score": 88, "text": "Second message chunk"},
-                    {"chunk_id": "msg_003", "score": 75, "text": "Third chunk"}
-                ],
-                "metadata": {...}
-            }
+        Example for multi-period query:
+            # Query week 1 of August
+            query_messages(
+                question_text="居服人員",
+                override_start_time="2025-08-01 00:00:00",
+                override_end_time="2025-08-07 23:59:59"
+            )
+
+            # Query week 2 of August
+            query_messages(
+                question_text="居服人員",
+                override_start_time="2025-08-08 00:00:00",
+                override_end_time="2025-08-14 23:59:59"
+            )
         """
         svc = QueryService()
+
+        # Use override times if provided, otherwise use default
+        actual_start = override_start_time if override_start_time else start_time
+        actual_end = override_end_time if override_end_time else end_time
 
         return await svc.query_group(
             group_uniid=group_uniid,
             question=question_text,
-            start_time=start_time,
-            end_time=end_time,
+            start_time=actual_start,
+            end_time=actual_end,
             top_k=top_k,
             analysis=analysis,
         )

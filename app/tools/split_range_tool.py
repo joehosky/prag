@@ -1,41 +1,36 @@
-"""Utility to split a date/time range into smaller windows.
-
-Returns list of (start_iso, end_iso) tuples.
-"""
-
-from __future__ import annotations
-
-from datetime import datetime, timedelta
-from typing import List, Tuple
+from langchain.tools import tool
+from typing import Optional
 
 
-def split_range(
-    start_iso: str, end_iso: str, max_span_days: int = 7
-) -> List[Tuple[str, str]]:
-    """Split ISO date range into windows no larger than max_span_days.
+@tool
+def split_range(start_time: str, end_time: str, interval_days: int = 7) -> str:
+    """Split a time range into smaller intervals for detailed querying.
 
-    start_iso and end_iso expected in ISO 8601 date or datetime format.
-    Returns list of (start_iso, end_iso) in ISO format (date portion if input dates).
+    Args:
+        start_time: Start datetime string (YYYY-MM-DD HH:MM:SS)
+        end_time: End datetime string (YYYY-MM-DD HH:MM:SS)
+        interval_days: Days per interval (default: 7 for weekly)
+
+    Returns:
+        JSON string with list of time ranges
     """
-    if not start_iso or not end_iso:
-        return []
+    from datetime import datetime, timedelta
+    import json
 
-    try:
-        start_dt = datetime.fromisoformat(start_iso)
-        end_dt = datetime.fromisoformat(end_iso)
-    except Exception:
-        # fallback: return single window
-        return [(start_iso, end_iso)]
+    start = datetime.fromisoformat(start_time.replace(" ", "T"))
+    end = datetime.fromisoformat(end_time.replace(" ", "T"))
 
-    if start_dt > end_dt:
-        return []
+    intervals = []
+    current = start
 
-    windows = []
-    cur = start_dt
-    max_span = timedelta(days=max_span_days)
-    while cur < end_dt:
-        nxt = min(cur + max_span, end_dt)
-        windows.append((cur.isoformat(), nxt.isoformat()))
-        cur = nxt
+    while current < end:
+        next_time = min(current + timedelta(days=interval_days), end)
+        intervals.append(
+            {
+                "start": current.strftime("%Y-%m-%d %H:%M:%S"),
+                "end": next_time.strftime("%Y-%m-%d %H:%M:%S"),
+            }
+        )
+        current = next_time
 
-    return windows
+    return json.dumps({"intervals": intervals}, ensure_ascii=False)

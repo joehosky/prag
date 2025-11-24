@@ -143,12 +143,11 @@ class LangChainAgent:
                     Your workflow:
                     1. Use the query_messages tool to search for relevant messages
                     2. Analyze the returned results carefully, Pay attention to the 'score' field (0-100)
-                        3. Determine if you can answer the question:
+                    3. Determine if you can answer the question:
                     - If you have at least one result with score > 30 that relates to the question → Provide answer
                     - If all results have score < 30 OR none relate to the question → Cannot answer
-                        4. Synthesize your response accordingly
-
-                        5. answer MUST be "繁體中文"
+                    4. Synthesize your response accordingly
+                    5. answer MUST be "繁體中文"
 
                     CRITICAL: You MUST respond in the following JSON format:
                     {{
@@ -195,6 +194,7 @@ class LangChainAgent:
             configurable = {
                 "configurable": {"thread_id": group_uniid},
                 "callbacks": [timing_callback],
+                # "recursion_limit": 8, # refer to scripts\multi_query.py
             }
 
             logger.debug("Calling agent.ainvoke: question=%s", question)
