@@ -39,46 +39,17 @@ def query_messages_tool(
         override_start_time: Optional[str] = None,
         override_end_time: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Search and retrieve relevant LINE messages based on the question.
-
-        This tool performs semantic search through the LINE group's message history
-        to find the most relevant messages matching the given question.
+        """Search LINE group messages for question_text.
 
         Args:
-            question_text: The search query or question. Use natural language or
-                        keywords to describe what you're looking for.
-            override_start_time: Optional start time to override the default range.
-                                Format: 'YYYY-MM-DD HH:MM:SS'
-            override_end_time: Optional end time to override the default range.
-                              Format: 'YYYY-MM-DD HH:MM:SS'
+            question_text: Search query (natural language or keywords)
+            override_start_time: Optional start time (YYYY-MM-DD HH:MM:SS)
+            override_end_time: Optional end time (YYYY-MM-DD HH:MM:SS)
 
         Returns:
-            A dictionary containing:
-            - answer: A string containing all matched chunk messages
-            - items: A list of match details with chunk_id, score, and text
-            - metadata: Additional search information
+            {answer: str, items: list[dict], metadata: dict}
 
-        Important notes:
-            - Results are ranked by relevance score (highest first)
-            - Scores above 80 indicate highly relevant matches
-            - Use override_start_time/override_end_time for querying specific time ranges
-            - When querying multiple time periods, call this tool multiple times with
-              different time overrides
-
-        Example for multi-period query:
-            # Query week 1 of August
-            query_messages(
-                question_text="居服人員",
-                override_start_time="2025-08-01 00:00:00",
-                override_end_time="2025-08-07 23:59:59"
-            )
-
-            # Query week 2 of August
-            query_messages(
-                question_text="居服人員",
-                override_start_time="2025-08-08 00:00:00",
-                override_end_time="2025-08-14 23:59:59"
-            )
+        Note: For multi-period queries, call multiple times with different time ranges.
         """
         svc = QueryService()
 

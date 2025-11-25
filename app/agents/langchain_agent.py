@@ -137,10 +137,8 @@ class LangChainAgent:
         try:
             timing_callback = DetailedTimingCallback()
 
-            # ================================================================
             # 根據模型類型選擇最佳 Prompt
             # Gemini 使用簡化版，OpenAI 可用完整版
-            # ================================================================
             if "gemini" in effective_model.lower():
                 sys_msg = """You are an intelligent assistant analyzing LINE group messages.
 
@@ -159,56 +157,40 @@ class LangChainAgent:
                     {
                         "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
                     }
-                    """
-            else:
-                logger.debug("Using detailed prompt for OpenAI/other models")
-                sys_msg = f"""You are an intelligent assistant analyzing LINE group messages.
-
-                    Your workflow:
-                    1. Use the query_messages tool to search for relevant messages
-                    2. Analyze the returned results carefully, Pay attention to the 'score' field (0-100)
-                    3. Determine if you can answer the question:
-                    - If you have at least one result with score > 30 that relates to the question → Provide answer
-                    - If all results have score < 30 OR none relate to the question → Cannot answer
-                    4. Synthesize your response accordingly
-                    5. answer MUST be "繁體中文"
-
-                    CRITICAL: You MUST respond in the following JSON format:
-                    {{
-                        "answer": "Your synthesized answer OR the 'no answer' message",
-                        "chunk_ids": "comma-separated chunk_ids OR empty string"
-                    }}
 
                     RULES:
-                    1. When you CAN answer (have relevant results with score > 30):
+                    When you CAN answer (have relevant results with score > 30):
+                    - Combine information from the most relevant chunks
+                    - Organize the information logically
+                    - Example: {{"answer": "居服人員的照顧..."}}
+                    """
+            else:
+                sys_msg = """You are an intelligent assistant analyzing LINE group messages.
+
+                    WORKFLOW:
+                    1. Use query_messages tool to search for relevant information
+                    2. Examine the returned results and their scores (0-100)
+                    3. Make decision based on results:
+                    - If you have results with score > 30: synthesize answer from those chunks
+                    - If all scores < 30 or no results: respond that information is not available
+
+                    IMPORTANT:
+                    - Always use the tool BEFORE forming your answer
+                    - Answer must be in 繁體中文
+
+                    Output after using tool:
+                    {
+                        "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
+                        "chunk_ids": "comma-separated chunk_ids OR empty string"
+                    }
+
+                    RULES:
+                    When you CAN answer (have relevant results with score > 30):
                     - Combine information from the most relevant chunks
                     - Organize the information logically
                     - Include only the chunk_ids you actually referenced
                     - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
-
-                    2. When you CANNOT answer (no relevant results OR all scores < 30):
-                    - Set answer to exactly: "無法找到問題相關的答案，請再輸入更詳細的資訊"
-                    - Set chunk_ids to empty string: ""
-                    - Example: {{"answer": "無法找到問題相關的答案，請再輸入更詳細的資訊", "chunk_ids": ""}}
-
-                    Example - Relevant results found:
-                    {{
-                        "answer": "居服人員王大明的照顧非常詳細,對個案無微不至...",
-                        "chunk_ids": "msg_001,msg_002,msg_005"
-                    }}
-
-                    Example - NO relevant results:
-                    {{
-                        "answer": "無法找到問題相關的答案，請再填入更詳細的問答",
-                        "chunk_ids": ""
-                    }}
-
-                    Remember:
-                    - Respond ONLY with valid JSON
-                    - Do not include any text outside the JSON structure
-                    - Use the exact message "無法找到問題相關的答案，請再填入更詳細的問答" when you cannot answer
                     """
-            # ================================================================
 
             payload = {
                 "messages": [
