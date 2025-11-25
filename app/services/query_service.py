@@ -9,6 +9,7 @@ import time
 from typing import Any, Dict, List, Optional
 from datetime import datetime, timezone
 import os
+import jieba
 
 import json
 from typing import Any, Dict, List, Optional
@@ -29,6 +30,26 @@ logger = logging.getLogger("app.services.query_service")
 
 
 class QueryService:
+    MAX_KEYWORDS = 5  # 最多提取多少個關鍵詞
+    MIN_KEYWORDS = 3  # 最少需要多少個關鍵詞（觸發 TextRank 回退）
+
+    _custom_dict_loaded = False
+
+    def __init__(self):
+        self._analysis_cache = {}
+
+        if not QueryService._custom_dict_loaded:
+            try:
+                custom_dict_path = "data/dict/custom_dict.txt"
+                if os.path.exists(custom_dict_path):
+                    jieba.load_userdict(custom_dict_path)
+                    QueryService._custom_dict_loaded = True
+                    logger.info(f"Loaded custom dictionary: {custom_dict_path}")
+                else:
+                    logger.warning(f"⚠️ Custom dictionary not found: {custom_dict_path}")
+            except Exception as e:
+                logger.exception(f"❌ Failed to load custom dictionary: {e}")
+
     async def query_group(
         self,
         group_uniid: str,
@@ -262,7 +283,7 @@ class QueryService:
         except Exception:
             logger.exception("BM25 search failed")
         finally:
-            logger.info("query_group:bm25_hits count=%d", len(bm_hits))
+            logger.debug("query_group:bm25_hits count=%d", len(bm_hits))
         step_times["bm25_search"] = time.time() - step_start
 
         # 5) build candidate set
@@ -357,7 +378,7 @@ class QueryService:
             q_ids = [int(k) for k in list(chunk_map.keys())]
             step_times["fetch_chunks"] = time.time() - step_start
 
-            logger.info(
+            logger.debug(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
                 len(candidates),
                 len(q_ids),
@@ -396,7 +417,7 @@ class QueryService:
             fused_filtered = [f for f in fused if f.get("final", 0.0) >= 0.3]
             step_times["fuse_scores"] = time.time() - step_start
 
-            logger.info(
+            logger.debug(
                 "query_group:fused count=%d fused_filtered=%d",
                 len(fused),
                 len(fused_filtered),
@@ -466,7 +487,6 @@ class QueryService:
                 step_times.get("build_answer", 0),
             )
 
-            # Return only answer and per-item chunk_id/score/text to simplify caller parsing
             return {"answer": answer, "items": items}
 
         finally:
@@ -531,13 +551,13 @@ class QueryService:
 
         if not has_time_keyword and not history:
             elapsed = time.time() - step_start
-            logger.info(
+            logger.debug(
                 "analyze_query: fast path (no time keywords, no history) in %.3fs",
                 elapsed,
             )
             return self._analyze_query_fast(question)
 
-        logger.info(
+        logger.debug(
             "analyze_query: full LLM path (time_keywords=%s, has_history=%s)",
             has_time_keyword,
             bool(history),
@@ -546,24 +566,161 @@ class QueryService:
 
     def _analyze_query_fast(self, question: str) -> Dict[str, Any]:
         """Fast query analysis without LLM."""
+        logger.debug("Run Fast analysis")
+
         try:
-            import jieba.analyse
             import jieba.posseg as pseg
 
-            keywords_list = jieba.analyse.textrank(question, topK=3, withWeight=False)
+            # Global stop words
+            global_stop_words = {
+                "什麼",
+                "哪個",
+                "哪些",
+                "怎麼",
+                "為何",
+                "為什麼",
+                "如何",
+                "是否",
+                "已經",
+                "還",
+                "也",
+                "都",
+                "再",
+                "又",
+                "就",
+                "才",
+                "這",
+                "那",
+                "這個",
+                "那個",
+                "這些",
+                "那些",
+                "在",
+                "於",
+                "對",
+                "對於",
+                "關於",
+                "由於",
+                "是",
+                "有",
+                "會",
+                "能",
+                "可以",
+                "應該",
+                "嗎",
+                "呢",
+                "吧",
+                "啊",
+                "的",
+                "了",
+                "過",
+                "東西",
+                "事情",
+                "時候",
+                "地方",
+                "方面",
+                "情況",
+                "提供",
+                "進行",
+                "完成",
+                "開始",
+                "結束",
+                "需要",
+                "多少",
+                "幾個",
+                "哪些",
+            }
 
-            if len(keywords_list) < 2:
-                keywords_list = jieba.analyse.extract_tags(
-                    question, topK=3, withWeight=False
+            # 1. POS tagging analysis
+            words = list(pseg.cut(question))
+
+            word_details = [(w.word, w.flag) for w in words]
+            logger.debug(f"Segmentation: {word_details}")
+
+            def is_valid_keyword(word: str, min_len: int = 2) -> bool:
+                """Check if word is valid keyword"""
+                return (
+                    word not in global_stop_words
+                    and len(word) >= min_len
+                    and not word.isdigit()
                 )
 
-            # 詞性分析：檢測實體
-            words = list(pseg.cut(question))
+            # 2. Collect candidate keywords
+            candidates = []
+
+            # Phase 1: Extract entities first
+            entities = [
+                w.word
+                for w in words
+                if w.flag in ["nr", "ns", "nt", "nz"] and is_valid_keyword(w.word)
+            ]
+            candidates.extend(entities)
+            logger.debug(f"Entities: {entities}")
+
+            # Phase 2: Add nouns if needed
+            if len(candidates) < self.MAX_KEYWORDS:
+                nouns = [
+                    w.word
+                    for w in words
+                    if w.flag in ["n", "vn"] and is_valid_keyword(w.word)
+                ]
+                nouns.sort(key=len, reverse=True)
+                candidates.extend(nouns)
+                logger.debug(f"Nouns: {nouns}")
+
+            # Phase 3: Add verbs (stricter filtering)
+            if len(candidates) < self.MAX_KEYWORDS:
+                verbs = [
+                    w.word for w in words if w.flag == "v" and is_valid_keyword(w.word)
+                ]
+                # Filter common generic verbs
+                common_verbs = {
+                    "做",
+                    "弄",
+                    "搞",
+                    "去",
+                    "來",
+                    "說",
+                    "講",
+                    "看",
+                    "提供",
+                    "進行",
+                    "開始",
+                    "結束",
+                    "完成",
+                }
+                verbs = [v for v in verbs if v not in common_verbs]
+                candidates.extend(verbs)
+                logger.debug(f"Verbs: {verbs}")
+
+            # 3. Deduplicate while preserving order
+            seen = set()
+            keywords_list = []
+            for word in candidates:
+                if word not in seen:
+                    keywords_list.append(word)
+                    seen.add(word)
+                    if len(keywords_list) >= self.MAX_KEYWORDS:
+                        break
+
+            # 4. TextRank fallback
+            if len(keywords_list) < self.MIN_KEYWORDS:
+                import jieba.analyse
+
+                raw_keywords = jieba.analyse.textrank(
+                    question, topK=self.MAX_KEYWORDS, withWeight=False
+                )
+                for kw in raw_keywords:
+                    if is_valid_keyword(kw) and kw not in seen:
+                        keywords_list.append(kw)
+                        seen.add(kw)
+                        if len(keywords_list) >= self.MAX_KEYWORDS:
+                            break
+
+            # Determine query type
             has_person = any(w.flag == "nr" for w in words)
             has_org = any(w.flag in ["nt", "nz"] for w in words)
-
-            # 簡單規則檢測實體指標
-            entity_indicators = ["誰", "哪位", "什麼人", "公司", "先生", "小姐"]
+            entity_indicators = ["誰", "哪位", "什麼人"]
             has_entity_indicator = any(ind in question for ind in entity_indicators)
 
             query_type = (
@@ -575,12 +732,9 @@ class QueryService:
             keywords = [{"text": kw, "required": True} for kw in keywords_list]
 
             logger.debug(
-                "Fast analysis: type=%s (person=%s, org=%s, indicator=%s), keywords=%s",
+                "Fast analysis: type=%s, keywords=%s",
                 query_type,
-                has_person,
-                has_org,
-                has_entity_indicator,
-                keywords,
+                [k["text"] for k in keywords],
             )
 
             return {
@@ -654,7 +808,7 @@ class QueryService:
             parsed = json.loads(raw)
 
             elapsed = time.time() - step_start
-            logger.info("analyze_query: full LLM completed in %.2fs", elapsed)
+            logger.debug("analyze_query: full LLM completed in %.2fs", elapsed)
 
             return {
                 "queryType": parsed.get("queryType") or "general",

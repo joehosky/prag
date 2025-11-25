@@ -4,6 +4,7 @@ from contextlib import asynccontextmanager
 import logging
 import traceback
 import sys
+import time
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
@@ -16,16 +17,44 @@ logging.getLogger().info("Starting app with python: %s", sys.executable)
 from app.api.v1.endpoints import router as api_router
 from app.db.alembic_runner import run_alembic_upgrade
 from app.core.config import settings
+from app.services.bm25_service import get_bm25_service
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    logger.info("=" * 60)
+    logger.info("Application startup")
+    logger.info("=" * 60)
+
     try:
+        logger.info("Running Alembic migrations...")
         run_alembic_upgrade(db_url=settings.database_url)
+        logger.info("Alembic migrations completed")
     except Exception:
-        logging.exception("Alembic upgrade failed — aborting startup")
+        logger.exception("Alembic upgrade failed — aborting startup")
         raise
+
+    try:
+        logger.info("Preloading BM25 service...")
+        start_time = time.time()
+
+        bm25_service = get_bm25_service()
+        elapsed = time.time() - start_time
+
+        logger.info(
+            f"BM25 service preloaded: {len(bm25_service.docs)} documents in {elapsed:.2f}s"
+        )
+
+    except Exception as e:
+        logger.exception(f"Failed to preload BM25 service: {e}")
+
+    logger.info("=" * 60)
+    logger.info("Application startup complete - Ready to serve requests")
+    logger.info("=" * 60)
+
     yield
+
+    logger.info("Application shutdown")
 
 
 # Create FastAPI instance with lifespan

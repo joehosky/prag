@@ -17,7 +17,7 @@ class LLMManager:
     """Centralized LLM management through LangChain.
 
     Supports:
-    - Multiple models from same provider (e.g., gpt-4o, gpt-4o-mini)
+    - Multiple models from same provider
     - Text generation (chat completion)
     - Embedding generation
     - Async operations
@@ -359,14 +359,14 @@ def get_llm_manager() -> LLMManager:
     """Get or create singleton default LLM manager."""
     global _default_manager
     if _default_manager is None:
-        # _default_manager = LLMManager(
-        #     default_model="gemini-2.0-flash",
-        #     default_embedding_model="text-embedding-3-small",
-        #     provider="gemini",
-        # )
         _default_manager = LLMManager(
-            default_model="gpt-4.1-mini",
+            default_model="gemini-2.0-flash",
             default_embedding_model="text-embedding-3-small",
-            provider="openai",
+            provider="gemini",
         )
+        # _default_manager = LLMManager(
+        #     default_model="gpt-4.1-mini",
+        #     default_embedding_model="text-embedding-3-small",
+        #     provider="openai",
+        # )
     return _default_manager

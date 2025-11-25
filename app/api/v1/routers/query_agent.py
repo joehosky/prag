@@ -40,8 +40,8 @@ async def query_agent(request: QueryRequest):
     except Exception:
         analysis = None
 
-    agent = LangChainAgent(model="gpt-4.1-mini")
-    # agent = LangChainAgent(model="gemini-2.0-flash")
+    # agent = LangChainAgent(model="gpt-4.1-mini")
+    agent = LangChainAgent(model="gemini-2.0-flash")
     try:
         start_time = None
         end_time = None
