@@ -8,7 +8,7 @@ from app.repositories.chunk_message_summary_repo import ChunkMessageSummaryRepos
 from app.models.chunk_message_summary import ChunkMessageSummary
 from app.services.bm25_service import (
     index_chunks_for_date_range_background,
-    BM25Service,
+    get_bm25_service,
 )
 from app.repositories.group_repo import GroupRepository
 from app.repositories.message_repo import MessageRepository
@@ -355,13 +355,20 @@ def summarize_group_messages_background(
                 for o in objs
             }
 
-            # delete old summaries for the same day
             old = chunk_repo.find_by_group_and_day(db, group_id, day_start, day_end)
             qdrant_ids = [o.qdrant_point_id for o in old if o.qdrant_point_id]
-            chunk_ids = [o.chunk_id for o in old if o.chunk_id]
+            chunk_ids_to_delete = [o.chunk_id for o in old if o.chunk_id]
+
+            # 刪除 Qdrant points
             try:
                 if qdrant_ids:
                     QdrantService().delete_points(qdrant_ids)
+                    logger.info(
+                        "Deleted %d Qdrant points for group %s day %s",
+                        len(qdrant_ids),
+                        group_id,
+                        day,
+                    )
             except Exception:
                 logger.exception(
                     "Failed to delete old qdrant points for group %s day %s",
@@ -369,25 +376,17 @@ def summarize_group_messages_background(
                     day,
                 )
 
-            # delete DB rows
+            # 刪除 DB rows
             chunk_repo.delete_by_group_and_day(db, group_id, day_start, day_end)
             db.commit()
+            logger.info(
+                "Deleted %d old ChunkMessageSummary records for group %s day %s",
+                len(old),
+                group_id,
+                day,
+            )
 
-            # remove old docs from BM25 index (best-effort) so reindex starts clean
-            try:
-                if chunk_ids:
-                    bm25 = BM25Service()
-                    for cid in chunk_ids:
-                        try:
-                            bm25.delete_chunk(cid)
-                        except Exception:
-                            logger.exception("BM25: failed to delete old doc %s", cid)
-            except Exception:
-                logger.exception(
-                    "BM25: unexpected error while cleaning old docs for group %s day %s",
-                    group_id,
-                    day,
-                )
+            bm25_updates = []
 
             # create new summaries
             success_all = True
@@ -422,6 +421,15 @@ def summarize_group_messages_background(
                         group_id,
                         day,
                     )
+
+                    if item.message_content:
+                        bm25_payload = {
+                            "group_id": int(group_id),
+                            "chunk_summary_id": int(getattr(item, "id", 0)),
+                        }
+                        bm25_updates.append(
+                            (item.chunk_id, item.message_content, bm25_payload)
+                        )
 
                     # prepare for embedding / qdrant: split message_content into chunks
                     if item.message_content:
@@ -496,18 +504,25 @@ def summarize_group_messages_background(
                     )
                     success_all = False
 
-            # schedule BM25 indexing for this day range
             try:
-                # schedule background BM25 task (fire-and-forget)
-                index_chunks_for_date_range_background(
-                    group_id, day_start.isoformat(), day_end.isoformat()
-                )
+                if chunk_ids_to_delete or bm25_updates:
+                    bm25 = get_bm25_service()
+                    bm25.batch_update(
+                        updates=bm25_updates if bm25_updates else None,
+                        deletes=chunk_ids_to_delete if chunk_ids_to_delete else None,
+                    )
+                    logger.info(
+                        "BM25 batch update completed for group %s day %s: deleted=%d, updated=%d",
+                        group_id,
+                        day,
+                        len(chunk_ids_to_delete),
+                        len(bm25_updates),
+                    )
             except Exception:
                 logger.exception(
-                    "Failed to schedule BM25 for group %s day %s", group_id, day
+                    "BM25 batch update failed for group %s day %s", group_id, day
                 )
 
-            # mark MessageSummaryTag.chunk_summary = True for this day
             try:
                 tag_repo = MessageSummaryTagRepository()
                 tag_found = None
@@ -525,7 +540,6 @@ def summarize_group_messages_background(
                         getattr(tag_found, "chunk_summary", None),
                     )
                     try:
-                        # ensure summary_time is present and chunk_summary set
                         if not getattr(tag_found, "summary_time", None):
                             tag_found.summary_time = day_start
                         tag_found.chunk_summary = True

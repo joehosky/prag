@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import warnings
 import logging
 import asyncio
 import time
@@ -16,11 +17,13 @@ from app.agents.llm_manager import get_llm_manager
 from app.services.embedding_service import generate_embedding
 from app.vector_store.qdrant_client import QdrantService
 from qdrant_client.http import models as qmodels
-from app.services.bm25_service import BM25Service
 from app.repositories.chunk_message_summary_repo import ChunkMessageSummaryRepository
 from app.repositories.group_repo import GroupRepository
 from app.services.fuse_service import fuse_scores, mmr
 from app.db.session import SessionLocal
+from app.services.bm25_service import get_bm25_service
+
+warnings.filterwarnings("ignore", category=SyntaxWarning, module="jieba")
 
 logger = logging.getLogger("app.services.query_service")
 
@@ -172,7 +175,7 @@ class QueryService:
         step_start = time.time()
         bm_hits: List[Dict] = []
         try:
-            bm = BM25Service()
+            bm = get_bm25_service()
             pairs = bm.search(resolved, top_k=top_k, group_id=gid)
             logger.debug(
                 "query_group:bm25 returned %d pairs for group_id=%s",
@@ -259,7 +262,7 @@ class QueryService:
         except Exception:
             logger.exception("BM25 search failed")
         finally:
-            logger.debug("query_group:bm25_hits count=%d", len(bm_hits))
+            logger.info("query_group:bm25_hits count=%d", len(bm_hits))
         step_times["bm25_search"] = time.time() - step_start
 
         # 5) build candidate set
@@ -354,7 +357,7 @@ class QueryService:
             q_ids = [int(k) for k in list(chunk_map.keys())]
             step_times["fetch_chunks"] = time.time() - step_start
 
-            logger.debug(
+            logger.info(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
                 len(candidates),
                 len(q_ids),
@@ -393,7 +396,7 @@ class QueryService:
             fused_filtered = [f for f in fused if f.get("final", 0.0) >= 0.3]
             step_times["fuse_scores"] = time.time() - step_start
 
-            logger.debug(
+            logger.info(
                 "query_group:fused count=%d fused_filtered=%d",
                 len(fused),
                 len(fused_filtered),
@@ -449,19 +452,19 @@ class QueryService:
             step_times["build_answer"] = time.time() - step_start
 
             # Log timing summary
-            # total_elapsed = time.time() - total_start
-            # logger.info(
-            #     "query_group:timing total=%.2fs | llm_analysis=%.2fs | embedding=%.2fs | qdrant=%.2fs | bm25=%.2fs | fetch_chunks=%.2fs | fuse=%.2fs | mmr=%.2fs | build_answer=%.2fs",
-            #     total_elapsed,
-            #     step_times.get("llm_analysis", 0),
-            #     step_times.get("embedding", 0),
-            #     step_times.get("qdrant_search", 0),
-            #     step_times.get("bm25_search", 0),
-            #     step_times.get("fetch_chunks", 0),
-            #     step_times.get("fuse_scores", 0),
-            #     step_times.get("mmr", 0),
-            #     step_times.get("build_answer", 0),
-            # )
+            total_elapsed = time.time() - total_start
+            logger.info(
+                "query_group:timing total=%.2fs | llm_analysis=%.2fs | embedding=%.2fs | qdrant=%.2fs | bm25=%.2fs | fetch_chunks=%.2fs | fuse=%.2fs | mmr=%.2fs | build_answer=%.2fs",
+                total_elapsed,
+                step_times.get("llm_analysis", 0),
+                step_times.get("embedding", 0),
+                step_times.get("qdrant_search", 0),
+                step_times.get("bm25_search", 0),
+                step_times.get("fetch_chunks", 0),
+                step_times.get("fuse_scores", 0),
+                step_times.get("mmr", 0),
+                step_times.get("build_answer", 0),
+            )
 
             # Return only answer and per-item chunk_id/score/text to simplify caller parsing
             return {"answer": answer, "items": items}
@@ -485,7 +488,120 @@ class QueryService:
         now_str: Optional[str] = None,
         model: Optional[str] = None,
     ) -> Dict[str, Any]:
-        """Analyze the user's question using the LLM manager."""
+        """Analyze the user's question with fast path optimization."""
+        step_start = time.time()
+
+        time_keywords = [
+            "今天",
+            "昨天",
+            "今日",
+            "昨日",
+            "明天",
+            "這周",
+            "上周",
+            "本周",
+            "上週",
+            "下周",
+            "這個月",
+            "上個月",
+            "本月",
+            "上月",
+            "下個月",
+            "這一周",
+            "上一周",
+            "這星期",
+            "上星期",
+            "最近",
+            "近期",
+            "前天",
+            "大前天",
+            "後天",
+            "今年",
+            "去年",
+            "明年",
+            "today",
+            "yesterday",
+            "tomorrow",
+            "this week",
+            "last week",
+            "next week",
+        ]
+
+        has_time_keyword = any(kw in question.lower() for kw in time_keywords)
+
+        if not has_time_keyword and not history:
+            elapsed = time.time() - step_start
+            logger.info(
+                "analyze_query: fast path (no time keywords, no history) in %.3fs",
+                elapsed,
+            )
+            return self._analyze_query_fast(question)
+
+        logger.info(
+            "analyze_query: full LLM path (time_keywords=%s, has_history=%s)",
+            has_time_keyword,
+            bool(history),
+        )
+        return self._analyze_query_full(question, history, now_str, model)
+
+    def _analyze_query_fast(self, question: str) -> Dict[str, Any]:
+        """Fast query analysis without LLM."""
+        try:
+            import jieba.analyse
+            import jieba.posseg as pseg
+
+            keywords_list = jieba.analyse.textrank(question, topK=3, withWeight=False)
+
+            if len(keywords_list) < 2:
+                keywords_list = jieba.analyse.extract_tags(
+                    question, topK=3, withWeight=False
+                )
+
+            # 詞性分析：檢測實體
+            words = list(pseg.cut(question))
+            has_person = any(w.flag == "nr" for w in words)
+            has_org = any(w.flag in ["nt", "nz"] for w in words)
+
+            # 簡單規則檢測實體指標
+            entity_indicators = ["誰", "哪位", "什麼人", "公司", "先生", "小姐"]
+            has_entity_indicator = any(ind in question for ind in entity_indicators)
+
+            query_type = (
+                "QueryTypeExact"
+                if (has_person or has_org or has_entity_indicator)
+                else "QueryTypeSemantics"
+            )
+
+            keywords = [{"text": kw, "required": True} for kw in keywords_list]
+
+            logger.debug(
+                "Fast analysis: type=%s (person=%s, org=%s, indicator=%s), keywords=%s",
+                query_type,
+                has_person,
+                has_org,
+                has_entity_indicator,
+                keywords,
+            )
+
+            return {
+                "queryType": query_type,
+                "startTime": None,
+                "endTime": None,
+                "resolvedQuery": question,
+                "keywords": keywords,
+            }
+        except Exception:
+            logger.exception("Fast analysis failed, using default")
+            return self._default_analysis(question)
+
+    def _analyze_query_full(
+        self,
+        question: str,
+        history: Optional[List[Dict[str, Any]]] = None,
+        now_str: Optional[str] = None,
+        model: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Full query analysis with LLM (for queries with time keywords or history)."""
         step_start = time.time()
 
         ctx_text = ""
@@ -501,44 +617,32 @@ class QueryService:
             except Exception:
                 ctx_text = str(history)
 
-        prompt = f"""
-                分析查詢並輸出 JSON。當前時間：{now_str}
+        prompt = f"""分析查詢並輸出 JSON。當前：{now_str}
+                    問題：{question}
+                    {f"上下文：{ctx_text}" if ctx_text else ""}
 
-                問題：{question}
-                歷史對話：{ctx_text}
+                    輸出：{{"queryType":"QueryTypeSemantics|QueryTypeExact|QueryTypeRecent","startTime":"YYYY-MM-DD HH:MM:SS或null","endTime":"YYYY-MM-DD HH:MM:SS或null","resolvedQuery":"改寫查詢","keywords":[{{"text":"詞","required":true/false}}]}}
 
-                輸出格式：
-                {{"queryType":"QueryTypeSemantics|QueryTypeExact|QueryTypeRecent","startTime":"YYYY-MM-DD HH:MM:SS或null","endTime":"YYYY-MM-DD HH:MM:SS或null","resolvedQuery":"改寫查詢","keywords":[{{"text":"詞","required":true/false}}]}}
+                    規則：
+                    - Exact：人名/公司/產品/日期/編號
+                    - Recent：今天/昨天/最近/這周（≤30天）
+                    - Semantics：其他
 
-                queryType 規則：
-                - QueryTypeExact：有人名/公司名/產品名/明確日期/特定編號
-                - QueryTypeRecent：有"今天/昨天/最近/這周"等時間詞，或範圍≤30天
-                - QueryTypeSemantics：其他情況
-                優先級：Exact > Recent > Semantics
+                    時間：今天→當日｜昨天→前日｜這周→本周一至日｜最近→7天前至今｜無→null
 
-                時間轉換（台北時區，周一為首日）：
-                今天→00:00-23:59｜昨天→前一天｜這周→周一至周日｜上周→上周一至周日｜這個月→1日至月底｜最近→7天前至今｜無時間詞→null
-
-                改寫規則（重要）：
-                1. 必須從歷史對話提取實體替換代詞（他/她/它/這個/那個/第一個/也/還等）
-                2. 移除時間詞（已在 startTime/endTime）
-                3. 保留核心關鍵詞
-                4. 如果問題中有代詞，必須從歷史找到對應實體
-
-                關鍵詞：最多3個，實體required=true、屬性false、無則[]
-
-                純JSON輸出，無markdown。
-                """
+                    改寫：替換代詞、移除時間詞、保留關鍵詞
+                    關鍵詞：最多3個
+                    純JSON，無markdown。"""
 
         try:
             llm_manager = get_llm_manager()
             if model:
                 try:
-                    raw = llm_manager.invoke(prompt, max_tokens=1024, model=model)
+                    raw = llm_manager.invoke(prompt, max_tokens=512, model=model)
                 except TypeError:
-                    raw = llm_manager.invoke(prompt, max_tokens=1024)
+                    raw = llm_manager.invoke(prompt, max_tokens=512)
             else:
-                raw = llm_manager.invoke(prompt, max_tokens=1024)
+                raw = llm_manager.invoke(prompt, max_tokens=512)
 
             raw = raw.strip()
             if raw.startswith("```"):
@@ -550,7 +654,7 @@ class QueryService:
             parsed = json.loads(raw)
 
             elapsed = time.time() - step_start
-            logger.debug("analyze_query:completed in %.2fs", elapsed)
+            logger.info("analyze_query: full LLM completed in %.2fs", elapsed)
 
             return {
                 "queryType": parsed.get("queryType") or "general",

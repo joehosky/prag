@@ -137,8 +137,32 @@ class LangChainAgent:
         try:
             timing_callback = DetailedTimingCallback()
 
-            # Enhanced system message to guide agent's analysis
-            sys_msg = f"""You are an intelligent assistant analyzing LINE group messages.
+            # ================================================================
+            # 根據模型類型選擇最佳 Prompt
+            # Gemini 使用簡化版，OpenAI 可用完整版
+            # ================================================================
+            if "gemini" in effective_model.lower():
+                sys_msg = """You are an intelligent assistant analyzing LINE group messages.
+
+                    WORKFLOW:
+                    1. Use query_messages tool to search for relevant information
+                    2. Examine the returned results and their scores (0-100)
+                    3. Make decision based on results:
+                    - If you have results with score > 30: synthesize answer from those chunks
+                    - If all scores < 30 or no results: respond that information is not available
+
+                    IMPORTANT:
+                    - Always use the tool BEFORE forming your answer
+                    - Answer must be in 繁體中文
+
+                    Output after using tool:
+                    {
+                        "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
+                    }
+                    """
+            else:
+                logger.debug("Using detailed prompt for OpenAI/other models")
+                sys_msg = f"""You are an intelligent assistant analyzing LINE group messages.
 
                     Your workflow:
                     1. Use the query_messages tool to search for relevant messages
@@ -184,6 +208,7 @@ class LangChainAgent:
                     - Do not include any text outside the JSON structure
                     - Use the exact message "無法找到問題相關的答案，請再填入更詳細的問答" when you cannot answer
                     """
+            # ================================================================
 
             payload = {
                 "messages": [
@@ -197,7 +222,9 @@ class LangChainAgent:
                 # "recursion_limit": 8, # refer to scripts\multi_query.py
             }
 
-            logger.debug("Calling agent.ainvoke: question=%s", question)
+            logger.debug(
+                "Calling agent.ainvoke: question=%s model=%s", question, effective_model
+            )
 
             result = await agent.ainvoke(payload, configurable)
 
@@ -207,9 +234,10 @@ class LangChainAgent:
 
         except Exception as exc:
             logger.exception(
-                "Agent invocation failed. question=%s group_uniid=%s error=%s",
+                "Agent invocation failed. question=%s group_uniid=%s model=%s error=%s",
                 question,
                 group_uniid,
+                effective_model,
                 exc,
             )
             raise
