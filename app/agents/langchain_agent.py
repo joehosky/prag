@@ -135,7 +135,6 @@ class LangChainAgent:
             raise
 
         try:
-
             current_year = datetime.now().year
             current_date = datetime.now().strftime("%Y-%m-%d")
             time_hint = f"\nIMPORTANT: Current date is {current_date}. When user mentions '八月份' without year, assume current year {current_year}."
@@ -143,9 +142,12 @@ class LangChainAgent:
             timing_callback = DetailedTimingCallback()
 
             # 根據模型類型選擇最佳 Prompt
-            # Gemini 使用簡化版，OpenAI 可用完整版
             if "gemini" in effective_model.lower():
                 sys_msg = """You are an intelligent assistant analyzing LINE group messages.
+                    TIME HANDLING:
+                    - When user mentions specific time periods (八月份, 上個月, etc.), MUST use override_start_time and override_end_time
+                    - Format: 'YYYY-MM-DD HH:MM:SS'
+                    - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
 
                     WORKFLOW:
                     1. Use query_messages tool to search for relevant information
@@ -171,6 +173,10 @@ class LangChainAgent:
                     """
             else:
                 sys_msg = """You are an intelligent assistant analyzing LINE group messages.
+                    TIME HANDLING:
+                    - When user mentions specific time periods (八月份, 上個月, etc.), MUST use override_start_time and override_end_time
+                    - Format: 'YYYY-MM-DD HH:MM:SS'
+                    - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
 
                     WORKFLOW:
                     1. Use query_messages tool to search for relevant information
