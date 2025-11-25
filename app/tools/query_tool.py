@@ -43,8 +43,8 @@ def query_messages_tool(
 
         Args:
             question_text: Search query (natural language or keywords)
-            override_start_time: Optional start time (YYYY-MM-DD HH:MM:SS)
-            override_end_time: Optional end time (YYYY-MM-DD HH:MM:SS)
+            override_start_time: Optional start time to override the default range.Format: 'YYYY-MM-DD HH:MM:SS'
+            override_end_time: Optional end time to override the default range.Format: 'YYYY-MM-DD HH:MM:SS'
 
         Returns:
             {answer: str, items: list[dict], metadata: dict}

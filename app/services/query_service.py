@@ -378,7 +378,7 @@ class QueryService:
             q_ids = [int(k) for k in list(chunk_map.keys())]
             step_times["fetch_chunks"] = time.time() - step_start
 
-            logger.debug(
+            logger.info(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
                 len(candidates),
                 len(q_ids),

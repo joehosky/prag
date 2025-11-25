@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-import time
+from datetime import datetime
 import json
 import re
 from typing import Any, Dict, List, Optional
@@ -135,6 +135,11 @@ class LangChainAgent:
             raise
 
         try:
+
+            current_year = datetime.now().year
+            current_date = datetime.now().strftime("%Y-%m-%d")
+            time_hint = f"\nIMPORTANT: Current date is {current_date}. When user mentions '八月份' without year, assume current year {current_year}."
+
             timing_callback = DetailedTimingCallback()
 
             # 根據模型類型選擇最佳 Prompt
@@ -191,6 +196,8 @@ class LangChainAgent:
                     - Include only the chunk_ids you actually referenced
                     - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
                     """
+
+            sys_msg = sys_msg + "\n" + time_hint
 
             payload = {
                 "messages": [
