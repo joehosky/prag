@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from app.agents.langchain_agent import LangChainAgent
 from app.services.query_service import QueryService
 from datetime import datetime
+from app.core.config import settings
 
 router = APIRouter()
 
@@ -40,8 +41,8 @@ async def query_agent(request: QueryRequest):
     except Exception:
         analysis = None
 
-    agent = LangChainAgent(model="gpt-4.1-mini")
-    # agent = LangChainAgent(model="gemini-2.0-flash")
+    configured_model = getattr(settings, "llm_model", None)
+    agent = LangChainAgent(model=configured_model)
     try:
         start_time = None
         end_time = None

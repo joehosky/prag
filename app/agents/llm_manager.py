@@ -49,9 +49,9 @@ class LLMManager:
             max_tokens: Default max tokens
             provider: LLM provider (openai, gemini, etc.)
         """
-        self.default_model = default_model or settings.openai_model
+        self.default_model = default_model or settings.llm_model
         self.default_embedding_model = (
-            default_embedding_model or settings.openai_embedding_model
+            default_embedding_model or settings.llm_embedding_model
         )
         self.temperature = temperature
         self.max_tokens = max_tokens
@@ -359,14 +359,12 @@ def get_llm_manager() -> LLMManager:
     """Get or create singleton default LLM manager."""
     global _default_manager
     if _default_manager is None:
-        # _default_manager = LLMManager(
-        #     default_model="gemini-2.0-flash",
-        #     default_embedding_model="text-embedding-3-small",
-        #     provider="gemini",
-        # )
+        provider = getattr(settings, "llm_provider", None) or "openai"
+        configured_model = getattr(settings, "llm_model", None)
+
         _default_manager = LLMManager(
-            default_model="gpt-4.1-mini",
-            default_embedding_model="text-embedding-3-small",
-            provider="openai",
+            default_model=configured_model,
+            default_embedding_model=getattr(settings, "llm_embedding_model", None),
+            provider=provider,
         )
     return _default_manager

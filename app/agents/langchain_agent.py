@@ -243,12 +243,14 @@ class LangChainAgent:
             raise
 
         try:
-            parsed_result = self._parse_agent_output(result)
+            parsed_result = self._parse_agent_output(result, model=effective_model)
             return parsed_result
         except Exception as e:
             logger.exception("Failed to parse agent output: %s", e)
 
-    def _parse_agent_output(self, agent_output: Dict[str, Any]) -> Dict[str, Any]:
+    def _parse_agent_output(
+        self, agent_output: Dict[str, Any], model: Optional[str] = None
+    ) -> Dict[str, Any]:
         """Parse agent output to extract answer, chunk_ids, and metadata.
 
         Args:
@@ -292,7 +294,11 @@ class LangChainAgent:
             answer = parsed_json.get("answer", "")
             chunk_ids_str = parsed_json.get("chunk_ids", "")
         except json.JSONDecodeError as e:
-            logger.warning(f"Failed to parse agent JSON response: {e}")
+            if model and "gemini" in model.lower():
+                pass
+            else:
+                logger.warning(f"Failed to parse agent JSON response: {e}")
+
             answer = agent_response
             chunk_ids_str = ""
 

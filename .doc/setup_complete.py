@@ -115,8 +115,6 @@ QDRANT_API_KEY=
 
 # OpenAI API
 OPENAI_API_KEY=your_api_key_here
-OPENAI_MODEL=gpt-4.1-mini
-OPENAI_EMBEDDING_MODEL=text-embedding-3-small
 
 # Application
 APP_ENV=development
@@ -557,8 +555,6 @@ class Settings(BaseSettings):
 
     # OpenAI
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1-mini"
-    openai_embedding_model: str = "text-embedding-3-small"
 
     # Application
     app_env: str = "development"

@@ -15,14 +15,16 @@ class Settings(BaseSettings):
     qdrant_port: int = 6333
     qdrant_collection_name: str = "line_messages"
 
-    # OpenAI
+    # OpenAI API Key
     openai_api_key: str = ""
-    openai_model: str = "gpt-4.1-mini"
-    openai_embedding_model: str = "text-embedding-3-small"
 
-    # Gemini API
+    # Gemini API Key
     gemini_api_key: str = ""
-    gemini_model: str = "gemini-2.0-flash"
+
+    # LLM Configuration
+    llm_provider: str = "openai"
+    llm_model: str = "gpt-4.1-mini"
+    llm_embedding_model: str = "text-embedding-3-small"
 
     # Application
     app_env: str = "development"
