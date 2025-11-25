@@ -168,6 +168,9 @@ async def upload_excel(
         def _col(row, idx):
             return row[idx] if idx < len(row) else None
 
+        import_date = datetime.now().date()
+        message_time = datetime.combine(import_date, datetime.min.time())
+
         for row in data_rows:
             # Expect fixed-column format: A (col 0) = question, B (col 1) = answer
             question = _col(row, 0)
@@ -182,7 +185,10 @@ async def upload_excel(
                 continue
             message_content = "\n\n".join(parts)
 
-            params = {"message_content": str(message_content)}
+            params = {
+                "message_content": str(message_content),
+                "message_time": message_time,
+            }
             if grp:
                 params["group_id"] = grp.id
 

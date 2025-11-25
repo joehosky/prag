@@ -206,11 +206,23 @@ def summarize_group_messages_background(
                         day,
                     )
 
-            # split into units of up to 20 messages
-            objs = msgs
-            units = list(chunk_list(objs, 20))
+            # split messages into QA-type (skip LLM) and normal messages (LLM)
+            def _is_qa(mm):
+                return (
+                    getattr(mm, "user_name", None) is None
+                    and getattr(mm, "user_uid", None) is None
+                    and getattr(mm, "message_uid", None) is None
+                )
+
+            qa_msgs = [m for m in msgs if _is_qa(m)]
+            normal_msgs = [m for m in msgs if not _is_qa(m)]
+
+            # prepare units (up to 20) for LLM classification from normal messages
+            units = list(chunk_list(normal_msgs, 20)) if normal_msgs else []
 
             all_topics = []
+
+            # process normal messages through LLM as before
             for unit in units:
                 snippets = []
                 for mm in unit:
@@ -298,6 +310,22 @@ def summarize_group_messages_background(
                     )
                     continue
 
+            # each QA message becomes a single topic (skip LLM)
+            for mm in qa_msgs:
+                time_str = (
+                    mm.message_time.strftime("%H:%M:%S")
+                    if mm.message_time
+                    else "00:00:00"
+                )
+                content = mm.message_content or mm.link_description or ""
+                qa_topic = {
+                    "detail": content,
+                    "ids": [mm.id],
+                    "startTime": time_str,
+                    "endTime": time_str,
+                }
+                all_topics.append(qa_topic)
+
             if len(all_topics) == 0:
                 logger.info("No topics returned for group %s day %s", group_id, day)
                 try:
@@ -349,10 +377,10 @@ def summarize_group_messages_background(
 
                 continue
 
-            # build id->content map
+            # build id->content map from all day messages (include QA messages)
             id_to_content = {
                 o.id: f"[{o.message_time.strftime('%H:%M:%S')}] {o.user_name or o.user_uid}: {o.message_content or o.link_description or ''}"
-                for o in objs
+                for o in msgs
             }
 
             old = chunk_repo.find_by_group_and_day(db, group_id, day_start, day_end)
