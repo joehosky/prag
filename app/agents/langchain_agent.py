@@ -82,23 +82,37 @@ class LangChainAgent:
             if len(messages) <= max_msgs:
                 return None
 
-            first_msg = messages[0]
-            recent_messages = (
-                messages[-max_msgs:]
-                if len(messages) % 2 == 0
-                else messages[-(max_msgs + 1) :]
-            )
-            new_messages = [first_msg] + recent_messages
+            # 從後往前保留 max_msgs 則，但要確保 tool_calls 和 tool response 成對
+            # 策略：找到第一個「完整對話輪次」的起點（human 或 system message）
+            keep_count = max_msgs
+            start_idx = len(messages) - keep_count
 
-            # logger.info(
-            #     "Memory trim: %d messages -> %d (keeping last %d), contents=%s",
-            #     len(messages),
-            #     len(new_messages),
-            #     max_msgs,
-            #     new_messages,
-            # )
+            # 往前調整 start_idx 直到找到 human/system message（避免從 tool 開始）
+            while start_idx > 0 and start_idx < len(messages):
+                msg = messages[start_idx]
+                msg_type = getattr(msg, "type", None)
+                # 如果是 tool message，往前移一位（保留對應的 ai message）
+                if msg_type == "tool":
+                    start_idx -= 1
+                else:
+                    break
 
-            return {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *new_messages]}
+            messages_to_remove = messages[:start_idx]
+
+            if messages_to_remove:
+                logger.debug(
+                    "Memory trim: total=%d, removing=%d oldest messages (from idx 0 to %d), keeping=%d latest",
+                    len(messages),
+                    len(messages_to_remove),
+                    start_idx - 1,
+                    len(messages) - start_idx,
+                )
+
+                return {
+                    "messages": [RemoveMessage(id=m.id) for m in messages_to_remove]
+                }
+
+            return None
 
         return trim_messages_middleware
 
