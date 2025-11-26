@@ -109,15 +109,41 @@ def log_agent_result(
     result: Dict[str, Any],
     enabled: bool = True,
     log_level: str = "INFO",
+    timing_callback: Optional["DetailedTimingCallback"] = None,
 ) -> None:
-    """Log agent result messages for debugging."""
+    """Log agent result messages for debugging.
+
+    Args:
+        result: Agent result dictionary containing messages
+        enabled: Whether logging is enabled
+        log_level: Log level (INFO, DEBUG, etc.)
+        timing_callback: Optional timing callback to show execution time per message
+    """
     if not enabled:
         return
 
     log_func = getattr(logger, log_level.lower(), logger.info)
     messages = result.get("messages", [])
 
+    # Get timing events if available
+    events = []
+    if timing_callback:
+        events = timing_callback.events
+
+    # Track which event we're on
+    llm_event_idx = 0
+    tool_event_idx = 0
+
     log_func("=== Agent Messages (%d total) ===", len(messages))
+
+    # Icon mapping for message types (bright colors for dark theme)
+    type_icons = {
+        "system": "⚙️ ",
+        "human": "👤",
+        "ai": "🤖",
+        "assistant": "🤖",
+        "tool": "🔧",
+    }
 
     for i, msg in enumerate(messages):
         msg_type = getattr(msg, "type", type(msg).__name__)
@@ -128,10 +154,46 @@ def log_agent_result(
         if len(str(content)) > 150:
             content_preview += "..."
 
+        # Get icon for message type
+        icon = type_icons.get(msg_type, "📝")
+
+        # Find corresponding timing for this message
+        timing_str = ""
+        if timing_callback and events:
+            # AI messages with tool_calls or content correspond to LLM calls
+            if msg_type in ("ai", "assistant"):
+                if tool_calls:
+                    # This is an LLM call that decided to use tools
+                    llm_events = [e for e in events if e["type"] == "llm"]
+                    if llm_event_idx < len(llm_events):
+                        elapsed = llm_events[llm_event_idx]["elapsed"]
+                        timing_str = f"\033[91m ⏱️ {elapsed:.2f}s\033[0m"
+                        llm_event_idx += 1
+                elif content:
+                    # This is the final LLM response
+                    llm_events = [e for e in events if e["type"] == "llm"]
+                    if llm_event_idx < len(llm_events):
+                        elapsed = llm_events[llm_event_idx]["elapsed"]
+                        timing_str = f"\033[91m ⏱️ {elapsed:.2f}s\033[0m"
+                        llm_event_idx += 1
+
+            # Tool messages correspond to tool calls
+            elif msg_type == "tool":
+                tool_events = [e for e in events if e["type"] in ("tool", "tool_error")]
+                if tool_event_idx < len(tool_events):
+                    event = tool_events[tool_event_idx]
+                    elapsed = event["elapsed"]
+                    timing_str = f"\033[91m ⏱️ {elapsed:.2f}s\033[0m"
+                    if event["type"] == "tool_error":
+                        timing_str += " ❌"
+                    tool_event_idx += 1
+
         log_func(
-            "Message[%d] type=%s tool_calls=%s content=%s",
+            "Message[%d] %s type=%s%s tool_calls=%s content=%s",
             i,
+            icon,
             msg_type,
+            timing_str,
             tool_calls if tool_calls else None,
             content_preview,
         )

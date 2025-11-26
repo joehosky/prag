@@ -223,7 +223,7 @@ class LangChainAgent:
 
             result = await agent.ainvoke(payload, configurable)
 
-            log_agent_result(result, enabled=True)
+            log_agent_result(result, enabled=True, timing_callback=timing_callback)
 
             timing_callback.log_summary()
 
