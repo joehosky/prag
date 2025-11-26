@@ -207,28 +207,59 @@ class LangChainAgent:
                 - Extract key entities from previous messages (e.g., names, topics)
                 - Use those entities in your search queries
 
+                MULTI-QUERY STRATEGY:
+                You should call query_messages MULTIPLE TIMES when:
+                1. Question contains multiple distinct sub-questions (e.g., "A做了什麼？B說了什麼？")
+                2. First query results have low scores (<30) - try different keywords or time periods
+                3. Question is broad/exploratory - narrow down with specific aspects
+                4. Initial results are incomplete - search for complementary information
+
+                For each query attempt:
+                - Analyze what aspects are still missing
+                - Adjust search_query to focus on different angles/keywords
+                - Try different time ranges if temporal relevance seems important
+                - Use override_start_time/override_end_time for specific periods
+
                 WORKFLOW:
                 1. Check conversation history for context
-                2. Use query_messages tool to search for relevant information
-                3. Examine the returned results and their scores (0-100)
-                4. Make decision based on results:
-                - If you have results with score > 30: synthesize answer from those chunks
-                - If all scores < 30 or no results: respond that information is not available
+                2. Decompose complex questions into searchable sub-queries
+                3. First query: Use query_messages with initial search terms
+                4. Evaluate results:
+                   - Count results with score > 30 (threshold for relevance)
+                   - Identify information gaps
+                5. If needed, make ADDITIONAL queries:
+                   - Try alternative keywords (synonyms, related terms)
+                   - Search different time periods
+                   - Focus on specific entities mentioned in question
+                6. Synthesize all gathered information into final answer
+
+                RESULT EVALUATION:
+                After EACH query_messages call:
+                - Check if you have ≥3 results with score > 30 → good coverage
+                - Check if results answer all aspects of the question
+                - If NO: plan next query with different parameters
+                - If YES: proceed to synthesize answer
 
                 IMPORTANT:
                 - Always use the tool BEFORE forming your answer
+                - You can call query_messages up to 3 times if needed
                 - Answer must be in 繁體中文
 
-                Output after using tool:
+                Output after using all needed queries:
                 {
                     "answer": "your answer or '無法找到問題相關的答案,請再輸入更詳細的資訊'",
                 }
 
                 RULES:
                 When you CAN answer (have relevant results with score > 30):
-                - Combine information from the most relevant chunks
+                - Combine information from ALL query results
                 - Organize the information logically
-                - Example: {{"answer": "居服人員的照顧..."}}
+                - Cite which query provided which information if multiple queries were used
+                - Example: {{"answer": "根據查詢結果,居服人員的照顧..."}}
+
+                When you CANNOT answer:
+                - Explain what you searched for
+                - Mention if you tried multiple query approaches
                 """
         else:
             sys_msg = """You are an intelligent assistant analyzing LINE group messages.
@@ -242,19 +273,45 @@ class LangChainAgent:
                 - Extract key entities from previous messages (e.g., names, topics)
                 - Use those entities in your search queries
 
+                MULTI-QUERY STRATEGY:
+                You should call query_messages MULTIPLE TIMES when:
+                1. Question contains multiple distinct sub-questions (e.g., "A做了什麼？B說了什麼？")
+                2. First query results have low scores (<30) - try different keywords or time periods
+                3. Question is broad/exploratory - narrow down with specific aspects
+                4. Initial results are incomplete - search for complementary information
+
+                For each query attempt:
+                - Analyze what aspects are still missing
+                - Adjust search_query to focus on different angles/keywords
+                - Try different time ranges if temporal relevance seems important
+                - Use override_start_time/override_end_time for specific periods
+
                 WORKFLOW:
                 1. Check conversation history for context
-                2. Use query_messages tool to search for relevant information
-                3. Examine the returned results and their scores (0-100)
-                4. Make decision based on results:
-                - If you have results with score > 30: synthesize answer from those chunks
-                - If all scores < 30 or no results: respond that information is not available
+                2. Decompose complex questions into searchable sub-queries
+                3. First query: Use query_messages with initial search terms
+                4. Evaluate results:
+                   - Count results with score > 30 (threshold for relevance)
+                   - Identify information gaps
+                5. If needed, make ADDITIONAL queries:
+                   - Try alternative keywords (synonyms, related terms)
+                   - Search different time periods
+                   - Focus on specific entities mentioned in question
+                6. Synthesize all gathered information into final answer
+
+                RESULT EVALUATION:
+                After EACH query_messages call:
+                - Check if you have ≥3 results with score > 30 → good coverage
+                - Check if results answer all aspects of the question
+                - If NO: plan next query with different parameters
+                - If YES: proceed to synthesize answer
 
                 IMPORTANT:
                 - Always use the tool BEFORE forming your answer
+                - You can call query_messages up to 3 times if needed
                 - Answer must be in 繁體中文
 
-                Output after using tool:
+                Output after using all needed queries:
                 {
                     "answer": "your answer or '無法找到問題相關的答案,請再輸入更詳細的資訊'",
                     "chunk_ids": "comma-separated chunk_ids OR empty string"
@@ -262,10 +319,15 @@ class LangChainAgent:
 
                 RULES:
                 When you CAN answer (have relevant results with score > 30):
-                - Combine information from the most relevant chunks
+                - Combine information from ALL query results
                 - Organize the information logically
-                - Include only the chunk_ids you actually referenced
-                - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
+                - Include chunk_ids from all referenced results across ALL queries
+                - Example: {{"answer": "根據多次查詢結果,居服人員的照顧...", "chunk_ids": "msg_001,msg_002,msg_005"}}
+
+                When you CANNOT answer:
+                - Explain what you searched for
+                - Mention if you tried multiple query approaches
+                - Example: {{"answer": "我嘗試使用不同關鍵詞查詢但未找到相關資訊", "chunk_ids": ""}}
                 """
 
         sys_msg = sys_msg + "\n" + time_hint
