@@ -25,6 +25,7 @@ class Settings(BaseSettings):
     llm_provider: str = "openai"
     llm_model: str = "gpt-4.1-mini"
     llm_embedding_model: str = "text-embedding-3-small"
+    llm_keep_memory: bool = False
 
     # Application
     app_env: str = "development"

@@ -6,7 +6,7 @@ from typing import Any, Dict, Optional
 from fastapi import APIRouter
 from pydantic import BaseModel
 
-from app.agents.langchain_agent import LangChainAgent
+from app.agents.langchain_agent import get_default_langchain_agent
 from app.services.query_service import QueryService
 from datetime import datetime
 from app.core.config import settings
@@ -28,33 +28,25 @@ class QueryResponse(BaseModel):
 
 @router.post("/agent", response_model=QueryResponse)
 async def query_agent(request: QueryRequest):
-    """Call the LangChain agent PoC"""
     question = request.question
     group_uniid = request.group_uniid
     top_k = int(request.top_k or 50)
 
     try:
         svc = QueryService()
-
         now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
         analysis = svc.analyze_query(question, history=None, now_str=now)
     except Exception:
         analysis = None
 
-    configured_model = getattr(settings, "llm_model", None)
-    agent = LangChainAgent(model=configured_model)
+    agent = get_default_langchain_agent()
+
     try:
         start_time = None
         end_time = None
         if analysis:
-            try:
-                start_time = analysis.get("startTime")
-            except Exception:
-                start_time = None
-            try:
-                end_time = analysis.get("endTime")
-            except Exception:
-                end_time = None
+            start_time = analysis.get("startTime")
+            end_time = analysis.get("endTime")
 
         out = await agent.run(
             question=question,
@@ -68,7 +60,6 @@ async def query_agent(request: QueryRequest):
     except Exception as e:
         return QueryResponse(answer="", confidence=0.0, metadata={"error": str(e)})
 
-    # Expect agent.run to return canonical dict: {'answer': str, 'confidence': float, 'metadata': {...}}
     if isinstance(out, dict):
         answer = out.get("answer", "")
         metadata = out.get("metadata")

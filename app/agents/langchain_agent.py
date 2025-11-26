@@ -48,6 +48,7 @@ class LangChainAgent:
         self.model = model
         self.use_memory = use_memory
         self.agent_kwargs = agent_kwargs or {}
+        self.checkpointer = InMemorySaver() if use_memory else None
 
         if llm_instance is not None:
             self.llm_instance = llm_instance
@@ -98,11 +99,9 @@ class LangChainAgent:
 
         tools: List[Any] = [query_messages, split_range]
 
-        checkpointer = InMemorySaver() if self.use_memory else None
-
         create_kwargs = dict(self.agent_kwargs)
-        if checkpointer is not None:
-            create_kwargs["checkpointer"] = checkpointer
+        if self.checkpointer is not None:
+            create_kwargs["checkpointer"] = self.checkpointer
 
         logger.debug(
             "Creating agent: model=%s use_memory=%s tools=%s",
@@ -128,97 +127,104 @@ class LangChainAgent:
                     model=effective_model, openai_api_key=settings.openai_api_key
                 )
 
+        current_year = datetime.now().year
+        current_date = datetime.now().strftime("%Y-%m-%d")
+        time_hint = f"\nIMPORTANT: Current date is {current_date}. When user mentions 'å…«æœˆä»½' without year, assume current year {current_year}."
+
+        # 根據模型類型選擇最佳 Prompt
+        if "gemini" in effective_model.lower():
+            sys_msg = """You are an intelligent assistant analyzing LINE group messages.
+                TIME HANDLING:
+                - When user mentions specific time periods (八月份, 上個月, etc.), MUST use override_start_time and override_end_time
+                - Format: 'YYYY-MM-DD HH:MM:SS'
+                - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
+
+                WORKFLOW:
+                1. Use query_messages tool to search for relevant information
+                2. Examine the returned results and their scores (0-100)
+                3. Make decision based on results:
+                - If you have results with score > 30: synthesize answer from those chunks
+                - If all scores < 30 or no results: respond that information is not available
+
+                IMPORTANT:
+                - Always use the tool BEFORE forming your answer
+                - Answer must be in 繁體中文
+
+                Output after using tool:
+                {
+                    "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
+                }
+
+                RULES:
+                When you CAN answer (have relevant results with score > 30):
+                - Combine information from the most relevant chunks
+                - Organize the information logically
+                - Example: {{"answer": "居服人員的照顧..."}}
+                """
+        else:
+            sys_msg = """You are an intelligent assistant analyzing LINE group messages.
+                TIME HANDLING:
+                - When user mentions specific time periods (八月份, 上個月, etc.), MUST use override_start_time and override_end_time
+                - Format: 'YYYY-MM-DD HH:MM:SS'
+                - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
+
+                WORKFLOW:
+                1. Use query_messages tool to search for relevant information
+                2. Examine the returned results and their scores (0-100)
+                3. Make decision based on results:
+                - If you have results with score > 30: synthesize answer from those chunks
+                - If all scores < 30 or no results: respond that information is not available
+
+                IMPORTANT:
+                - Always use the tool BEFORE forming your answer
+                - Answer must be in 繁體中文
+
+                Output after using tool:
+                {
+                    "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
+                    "chunk_ids": "comma-separated chunk_ids OR empty string"
+                }
+
+                RULES:
+                When you CAN answer (have relevant results with score > 30):
+                - Combine information from the most relevant chunks
+                - Organize the information logically
+                - Include only the chunk_ids you actually referenced
+                - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
+                """
+
+        sys_msg = sys_msg + "\n" + time_hint
+
         try:
-            agent = create_agent(model=llm_obj, tools=tools, **create_kwargs)
+            # 在 create_agent 中設定 system_prompt（LangChain 1.0 語法）
+            agent = create_agent(
+                model=llm_obj,
+                tools=tools,
+                system_prompt=sys_msg,
+                **create_kwargs,
+            )
         except Exception as e:
             logger.exception("Failed to create agent: %s", e)
             raise
 
         try:
-            current_year = datetime.now().year
-            current_date = datetime.now().strftime("%Y-%m-%d")
-            time_hint = f"\nIMPORTANT: Current date is {current_date}. When user mentions '八月份' without year, assume current year {current_year}."
-
             timing_callback = DetailedTimingCallback()
 
-            # 根據模型類型選擇最佳 Prompt
-            if "gemini" in effective_model.lower():
-                sys_msg = """You are an intelligent assistant analyzing LINE group messages.
-                    TIME HANDLING:
-                    - When user mentions specific time periods (八月份, 上個月, etc.), MUST use override_start_time and override_end_time
-                    - Format: 'YYYY-MM-DD HH:MM:SS'
-                    - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
-
-                    WORKFLOW:
-                    1. Use query_messages tool to search for relevant information
-                    2. Examine the returned results and their scores (0-100)
-                    3. Make decision based on results:
-                    - If you have results with score > 30: synthesize answer from those chunks
-                    - If all scores < 30 or no results: respond that information is not available
-
-                    IMPORTANT:
-                    - Always use the tool BEFORE forming your answer
-                    - Answer must be in 繁體中文
-
-                    Output after using tool:
-                    {
-                        "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
-                    }
-
-                    RULES:
-                    When you CAN answer (have relevant results with score > 30):
-                    - Combine information from the most relevant chunks
-                    - Organize the information logically
-                    - Example: {{"answer": "居服人員的照顧..."}}
-                    """
-            else:
-                sys_msg = """You are an intelligent assistant analyzing LINE group messages.
-                    TIME HANDLING:
-                    - When user mentions specific time periods (八月份, 上個月, etc.), MUST use override_start_time and override_end_time
-                    - Format: 'YYYY-MM-DD HH:MM:SS'
-                    - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
-
-                    WORKFLOW:
-                    1. Use query_messages tool to search for relevant information
-                    2. Examine the returned results and their scores (0-100)
-                    3. Make decision based on results:
-                    - If you have results with score > 30: synthesize answer from those chunks
-                    - If all scores < 30 or no results: respond that information is not available
-
-                    IMPORTANT:
-                    - Always use the tool BEFORE forming your answer
-                    - Answer must be in 繁體中文
-
-                    Output after using tool:
-                    {
-                        "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
-                        "chunk_ids": "comma-separated chunk_ids OR empty string"
-                    }
-
-                    RULES:
-                    When you CAN answer (have relevant results with score > 30):
-                    - Combine information from the most relevant chunks
-                    - Organize the information logically
-                    - Include only the chunk_ids you actually referenced
-                    - Example: {{"answer": "居服人員的照顧...", "chunk_ids": "msg_001,msg_002"}}
-                    """
-
-            sys_msg = sys_msg + "\n" + time_hint
-
+            # 只傳當前問題，checkpointer 會自動處理歷史
             payload = {
-                "messages": [
-                    {"role": "system", "content": sys_msg},
-                    {"role": "user", "content": question},
-                ],
+                "messages": [{"role": "user", "content": question}],
             }
+
             configurable = {
                 "configurable": {"thread_id": group_uniid},
                 "callbacks": [timing_callback],
-                # "recursion_limit": 8, # refer to scripts\multi_query.py
             }
 
             logger.debug(
-                "Calling agent.ainvoke: question=%s model=%s", question, effective_model
+                "Calling agent.ainvoke: question=%s model=%s thread_id=%s",
+                question,
+                effective_model,
+                group_uniid,
             )
 
             result = await agent.ainvoke(payload, configurable)
@@ -315,4 +321,27 @@ class LangChainAgent:
         return result_dict
 
 
-__all__ = ["LangChainAgent"]
+_default_agent_instance: Optional[LangChainAgent] = None
+
+
+def get_default_langchain_agent() -> LangChainAgent:
+    global _default_agent_instance
+    if _default_agent_instance is None:
+        from app.core.config import settings
+
+        configured_model = getattr(settings, "llm_model", None)
+        llm_keep_memory = getattr(settings, "llm_keep_memory", None)
+
+        logger.info(
+            "langchain: llm_model=%s, llm_keep_memory=%s",
+            configured_model,
+            llm_keep_memory,
+        )
+
+        _default_agent_instance = LangChainAgent(
+            model=configured_model, use_memory=llm_keep_memory
+        )
+    return _default_agent_instance
+
+
+__all__ = ["LangChainAgent", "get_default_langchain_agent"]
