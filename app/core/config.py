@@ -27,6 +27,8 @@ class Settings(BaseSettings):
     llm_embedding_model: str = "text-embedding-3-small"
     llm_keep_memory: bool = False
     llm_keep_memory_limit: int = 3
+    llm_keep_memory: bool = False
+    llm_stream_output: bool = False
 
     # Application
     app_env: str = "development"

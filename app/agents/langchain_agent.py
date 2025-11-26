@@ -82,16 +82,16 @@ class LangChainAgent:
             if len(messages) <= max_msgs:
                 return None
 
-            # 從後往前保留 max_msgs 則，但要確保 tool_calls 和 tool response 成對
-            # 策略：找到第一個「完整對話輪次」的起點（human 或 system message）
+            # Keep last max_msgs messages, ensure tool_calls and tool responses are paired
+            # Strategy: find the start of a complete conversation round (human or system message)
             keep_count = max_msgs
             start_idx = len(messages) - keep_count
 
-            # 往前調整 start_idx 直到找到 human/system message（避免從 tool 開始）
+            # Adjust start_idx forward until we find human/system message (avoid starting from tool)
             while start_idx > 0 and start_idx < len(messages):
                 msg = messages[start_idx]
                 msg_type = getattr(msg, "type", None)
-                # 如果是 tool message，往前移一位（保留對應的 ai message）
+                # If it's a tool message, move forward one position (keep corresponding ai message)
                 if msg_type == "tool":
                     start_idx -= 1
                 else:
@@ -116,7 +116,7 @@ class LangChainAgent:
 
         return trim_messages_middleware
 
-    async def run(
+    async def _prepare_agent(
         self,
         question: str,
         group_uniid: str,
@@ -125,14 +125,12 @@ class LangChainAgent:
         top_k: int = 50,
         analysis: Optional[Dict[str, Any]] = None,
         model: Optional[str] = None,
-        use_agent: bool = True,
-    ) -> Dict[str, Any]:
-        """Run the LangChain agent and return analyzed results.
+        enable_streaming: bool = False,
+    ):
+        """Prepare agent for execution (shared logic for both run and astream).
 
         Returns:
-            Dict containing:
-            - answer: Synthesized answer based on search results
-            - metadata: Contains chunk_ids
+            Tuple of (agent, payload, configurable, effective_model)
         """
 
         if analysis is None:
@@ -146,7 +144,6 @@ class LangChainAgent:
             )
 
             svc = QueryService()
-
             analysis = svc.analyze_query(question, history=None, now_str=now)
 
         query_messages = query_messages_tool(
@@ -187,8 +184,11 @@ class LangChainAgent:
                 manager = get_llm_manager()
                 llm_obj = manager.get_llm_for_agent(model=effective_model)
             except Exception:
+                # For streaming, explicitly set streaming=True
                 llm_obj = ChatOpenAI(
-                    model=effective_model, openai_api_key=settings.openai_api_key
+                    model=effective_model,
+                    openai_api_key=settings.openai_api_key,
+                    streaming=enable_streaming,
                 )
 
         current_year = datetime.now().year
@@ -281,17 +281,49 @@ class LangChainAgent:
             logger.exception("Failed to create agent: %s", e)
             raise
 
+        payload = {
+            "messages": [{"role": "user", "content": question}],
+        }
+
+        configurable = {
+            "configurable": {"thread_id": group_uniid},
+        }
+
+        return agent, payload, configurable, effective_model
+
+    async def run(
+        self,
+        question: str,
+        group_uniid: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        top_k: int = 50,
+        analysis: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None,
+        use_agent: bool = True,
+    ) -> Dict[str, Any]:
+        """Run the LangChain agent and return analyzed results.
+
+        Returns:
+            Dict containing:
+            - answer: Synthesized answer based on search results
+            - metadata: Contains chunk_ids
+        """
+
+        agent, payload, configurable, effective_model = await self._prepare_agent(
+            question=question,
+            group_uniid=group_uniid,
+            start_time=start_time,
+            end_time=end_time,
+            top_k=top_k,
+            analysis=analysis,
+            model=model,
+            enable_streaming=False,
+        )
+
         try:
             timing_callback = DetailedTimingCallback()
-
-            payload = {
-                "messages": [{"role": "user", "content": question}],
-            }
-
-            configurable = {
-                "configurable": {"thread_id": group_uniid},
-                "callbacks": [timing_callback],
-            }
+            configurable["callbacks"] = [timing_callback]
 
             logger.debug(
                 "Calling agent.ainvoke: question=%s model=%s thread_id=%s",
@@ -321,6 +353,66 @@ class LangChainAgent:
             return parsed_result
         except Exception as e:
             logger.exception("Failed to parse agent output: %s", e)
+
+    async def astream(
+        self,
+        question: str,
+        group_uniid: str,
+        start_time: Optional[str] = None,
+        end_time: Optional[str] = None,
+        top_k: int = 50,
+        analysis: Optional[Dict[str, Any]] = None,
+        model: Optional[str] = None,
+    ):
+        """Stream the LangChain agent responses asynchronously.
+
+        Yields:
+            str: Streamed content chunks from the agent
+        """
+
+        agent, payload, configurable, effective_model = await self._prepare_agent(
+            question=question,
+            group_uniid=group_uniid,
+            start_time=start_time,
+            end_time=end_time,
+            top_k=top_k,
+            analysis=analysis,
+            model=model,
+            enable_streaming=True,
+        )
+
+        logger.debug(
+            "Calling agent.astream_events: question=%s model=%s thread_id=%s",
+            question,
+            effective_model,
+            group_uniid,
+        )
+
+        try:
+            async for event in agent.astream_events(
+                payload, configurable, version="v2"
+            ):
+                kind = event.get("event")
+
+                # Stream on_chat_model_stream events for real-time output
+                if kind == "on_chat_model_stream":
+                    content = event.get("data", {}).get("chunk", {})
+                    if hasattr(content, "content") and content.content:
+                        logger.debug(f"Streaming chunk: {content.content[:20]}...")
+                        yield content.content
+                    elif isinstance(content, dict) and content.get("content"):
+                        logger.debug(f"Streaming chunk: {content['content'][:20]}...")
+                        yield content["content"]
+
+        except Exception as exc:
+            logger.exception(
+                "Agent streaming failed. question=%s group_uniid=%s model=%s error=%s",
+                question,
+                group_uniid,
+                effective_model,
+                exc,
+            )
+            raise
 
     def _parse_agent_output(
         self, agent_output: Dict[str, Any], model: Optional[str] = None
@@ -398,11 +490,11 @@ _default_agent_instance: Optional[LangChainAgent] = None
 
 
 def get_default_langchain_agent() -> LangChainAgent:
-    """獲取全局單例 agent 實例
+    """Get global singleton agent instance
 
-    配置：
-    - use_memory=True: 啟用記憶功能
-    - max_messages=5: 保留最近 5 條消息, 設定為 0 表示無限制
+    Configuration:
+    - use_memory=True: Enable memory functionality
+    - max_messages=5: Keep last 5 messages, set to 0 for unlimited
     """
     global _default_agent_instance
     if _default_agent_instance is None:
@@ -413,7 +505,7 @@ def get_default_langchain_agent() -> LangChainAgent:
         llm_keep_memory_limit = getattr(settings, "llm_keep_memory_limit", None)
 
         logger.debug(
-            "langchain: llm_model=%s, llm_keep_memory=%s",
+            "langchain: llm_model=%s, llm_keep_memory=%s, llm_stream_output=%s",
             configured_model,
             llm_keep_memory,
         )

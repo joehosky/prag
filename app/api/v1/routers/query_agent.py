@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 from typing import Any, Dict, Optional
+from enum import Enum
 from fastapi import APIRouter
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from app.agents.langchain_agent import get_default_langchain_agent
@@ -14,11 +16,16 @@ from app.core.config import settings
 router = APIRouter()
 
 
+class StreamMode(str, Enum):
+    NORMAL = "normal"
+    STREAM = "stream"
+
+
 class QueryRequest(BaseModel):
     group_uniid: str
     question: str
-    search_type: str = "hybrid"
     top_k: int = 50
+    stream_mode: StreamMode = StreamMode.NORMAL
 
 
 class QueryResponse(BaseModel):
@@ -26,12 +33,24 @@ class QueryResponse(BaseModel):
     metadata: Optional[Dict] = None
 
 
-@router.post("/agent", response_model=QueryResponse)
+@router.post("/agent")
 async def query_agent(request: QueryRequest):
+    """Query agent endpoint supporting both normal and streaming modes.
+
+    Args:
+        request: QueryRequest with stream_mode to choose response type
+            - stream_mode="normal": Returns complete QueryResponse
+            - stream_mode="stream": Returns StreamingResponse
+
+    Returns:
+        QueryResponse or StreamingResponse based on stream_mode
+    """
     question = request.question
     group_uniid = request.group_uniid
     top_k = int(request.top_k or 50)
+    stream_mode = request.stream_mode
 
+    # Prepare query analysis
     try:
         svc = QueryService()
         now = datetime.now().astimezone().strftime("%Y-%m-%d %H:%M:%S")
@@ -39,15 +58,41 @@ async def query_agent(request: QueryRequest):
     except Exception:
         analysis = None
 
+    start_time = None
+    end_time = None
+    if analysis:
+        start_time = analysis.get("startTime")
+        end_time = analysis.get("endTime")
+
     agent = get_default_langchain_agent()
 
-    try:
-        start_time = None
-        end_time = None
-        if analysis:
-            start_time = analysis.get("startTime")
-            end_time = analysis.get("endTime")
+    # Handle streaming mode
+    if stream_mode == StreamMode.STREAM:
 
+        async def event_generator():
+            """Generate streaming events"""
+            async for chunk in agent.astream(
+                question=question,
+                group_uniid=group_uniid,
+                start_time=start_time,
+                end_time=end_time,
+                top_k=top_k,
+                analysis=analysis,
+            ):
+                yield chunk
+
+        return StreamingResponse(
+            event_generator(),
+            media_type="text/event-stream",
+            headers={
+                "Cache-Control": "no-cache",
+                "Connection": "keep-alive",
+                "X-Accel-Buffering": "no",
+            },
+        )
+
+    # Handle normal mode
+    try:
         out = await agent.run(
             question=question,
             group_uniid=group_uniid,
@@ -58,7 +103,7 @@ async def query_agent(request: QueryRequest):
             use_agent=True,
         )
     except Exception as e:
-        return QueryResponse(answer="", confidence=0.0, metadata={"error": str(e)})
+        return QueryResponse(answer="", metadata={"error": str(e)})
 
     if isinstance(out, dict):
         answer = out.get("answer", "")
