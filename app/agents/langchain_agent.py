@@ -19,9 +19,13 @@ from app.utils.agent_log import log_agent_result, DetailedTimingCallback
 logger = logging.getLogger("app.agents.langchain_agent")
 
 try:
-    from langchain.agents import create_agent
+    from langchain.agents import create_agent, AgentState
+    from langchain.agents.middleware import before_model
     from langchain_openai import ChatOpenAI
     from langgraph.checkpoint.memory import InMemorySaver
+    from langchain_core.messages import RemoveMessage
+    from langgraph.graph.message import REMOVE_ALL_MESSAGES
+    from langgraph.runtime import Runtime
 except Exception as exc:
     raise ImportError(
         "langchain and provider packages are required for LangChainAgent."
@@ -35,6 +39,7 @@ class LangChainAgent:
     - model: model name passed to LangChain's OpenAI when no `llm_instance` is provided.
     - llm_instance: optional pre-initialized LLM object (preferred).
     - use_memory: attach MemorySaver when True.
+    - max_messages: maximum number of messages to keep (default: 5, 0=unlimited)
     - agent_kwargs: forwarded to `create_agent`.
     """
 
@@ -43,10 +48,12 @@ class LangChainAgent:
         model: str = "gpt-4.1-mini",
         llm_instance: Optional[Any] = None,
         use_memory: bool = False,
+        max_messages: int = 5,
         agent_kwargs: Optional[Dict[str, Any]] = None,
     ) -> None:
         self.model = model
         self.use_memory = use_memory
+        self.max_messages = max_messages
         self.agent_kwargs = agent_kwargs or {}
         self.checkpointer = InMemorySaver() if use_memory else None
 
@@ -55,6 +62,45 @@ class LangChainAgent:
         else:
             manager = get_llm_manager()
             self.llm_instance = manager.get_llm_for_agent(model=self.model)
+
+        logger.info(
+            "langchain: llm_model=%s, llm_keep_memory=%s, max_messages=%s",
+            self.model,
+            self.use_memory,
+            self.max_messages if self.use_memory else "N/A",
+        )
+
+    def _create_trim_middleware(self):
+        max_msgs = self.max_messages
+
+        @before_model
+        def trim_messages_middleware(
+            state: AgentState, runtime: Runtime
+        ) -> dict[str, Any] | None:
+            messages = state["messages"]
+
+            if len(messages) <= max_msgs:
+                return None
+
+            first_msg = messages[0]
+            recent_messages = (
+                messages[-max_msgs:]
+                if len(messages) % 2 == 0
+                else messages[-(max_msgs + 1) :]
+            )
+            new_messages = [first_msg] + recent_messages
+
+            # logger.info(
+            #     "Memory trim: %d messages -> %d (keeping last %d), contents=%s",
+            #     len(messages),
+            #     len(new_messages),
+            #     max_msgs,
+            #     new_messages,
+            # )
+
+            return {"messages": [RemoveMessage(id=REMOVE_ALL_MESSAGES), *new_messages]}
+
+        return trim_messages_middleware
 
     async def run(
         self,
@@ -103,6 +149,10 @@ class LangChainAgent:
         if self.checkpointer is not None:
             create_kwargs["checkpointer"] = self.checkpointer
 
+        if self.use_memory and self.max_messages > 0:
+            trim_middleware = self._create_trim_middleware()
+            create_kwargs["middleware"] = [trim_middleware]
+
         logger.debug(
             "Creating agent: model=%s use_memory=%s tools=%s",
             self.model,
@@ -129,9 +179,8 @@ class LangChainAgent:
 
         current_year = datetime.now().year
         current_date = datetime.now().strftime("%Y-%m-%d")
-        time_hint = f"\nIMPORTANT: Current date is {current_date}. When user mentions 'å…«æœˆä»½' without year, assume current year {current_year}."
+        time_hint = f"\nIMPORTANT: Current date is {current_date}. When user mentions '八月份' without year, assume current year {current_year}."
 
-        # 根據模型類型選擇最佳 Prompt
         if "gemini" in effective_model.lower():
             sys_msg = """You are an intelligent assistant analyzing LINE group messages.
                 TIME HANDLING:
@@ -139,10 +188,16 @@ class LangChainAgent:
                 - Format: 'YYYY-MM-DD HH:MM:SS'
                 - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
 
+                CONTEXT-AWARE FOLLOW-UP QUESTIONS:
+                - When user asks follow-up questions, check conversation history for context
+                - Extract key entities from previous messages (e.g., names, topics)
+                - Use those entities in your search queries
+
                 WORKFLOW:
-                1. Use query_messages tool to search for relevant information
-                2. Examine the returned results and their scores (0-100)
-                3. Make decision based on results:
+                1. Check conversation history for context
+                2. Use query_messages tool to search for relevant information
+                3. Examine the returned results and their scores (0-100)
+                4. Make decision based on results:
                 - If you have results with score > 30: synthesize answer from those chunks
                 - If all scores < 30 or no results: respond that information is not available
 
@@ -152,7 +207,7 @@ class LangChainAgent:
 
                 Output after using tool:
                 {
-                    "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
+                    "answer": "your answer or '無法找到問題相關的答案,請再輸入更詳細的資訊'",
                 }
 
                 RULES:
@@ -168,10 +223,16 @@ class LangChainAgent:
                 - Format: 'YYYY-MM-DD HH:MM:SS'
                 - Example: "八月份" → override_start_time='2025-08-01 00:00:00', override_end_time='2025-08-31 23:59:59'
 
+                CONTEXT-AWARE FOLLOW-UP QUESTIONS:
+                - When user asks follow-up questions, check conversation history for context
+                - Extract key entities from previous messages (e.g., names, topics)
+                - Use those entities in your search queries
+
                 WORKFLOW:
-                1. Use query_messages tool to search for relevant information
-                2. Examine the returned results and their scores (0-100)
-                3. Make decision based on results:
+                1. Check conversation history for context
+                2. Use query_messages tool to search for relevant information
+                3. Examine the returned results and their scores (0-100)
+                4. Make decision based on results:
                 - If you have results with score > 30: synthesize answer from those chunks
                 - If all scores < 30 or no results: respond that information is not available
 
@@ -181,7 +242,7 @@ class LangChainAgent:
 
                 Output after using tool:
                 {
-                    "answer": "your answer or '無法找到問題相關的答案，請再輸入更詳細的資訊'",
+                    "answer": "your answer or '無法找到問題相關的答案,請再輸入更詳細的資訊'",
                     "chunk_ids": "comma-separated chunk_ids OR empty string"
                 }
 
@@ -196,7 +257,6 @@ class LangChainAgent:
         sys_msg = sys_msg + "\n" + time_hint
 
         try:
-            # 在 create_agent 中設定 system_prompt（LangChain 1.0 語法）
             agent = create_agent(
                 model=llm_obj,
                 tools=tools,
@@ -210,7 +270,6 @@ class LangChainAgent:
         try:
             timing_callback = DetailedTimingCallback()
 
-            # 只傳當前問題，checkpointer 會自動處理歷史
             payload = {
                 "messages": [{"role": "user", "content": question}],
             }
@@ -325,21 +384,30 @@ _default_agent_instance: Optional[LangChainAgent] = None
 
 
 def get_default_langchain_agent() -> LangChainAgent:
+    """獲取全局單例 agent 實例
+
+    配置：
+    - use_memory=True: 啟用記憶功能
+    - max_messages=5: 保留最近 5 條消息, 設定為 0 表示無限制
+    """
     global _default_agent_instance
     if _default_agent_instance is None:
         from app.core.config import settings
 
         configured_model = getattr(settings, "llm_model", None)
         llm_keep_memory = getattr(settings, "llm_keep_memory", None)
+        llm_keep_memory_limit = getattr(settings, "llm_keep_memory_limit", None)
 
-        logger.info(
+        logger.debug(
             "langchain: llm_model=%s, llm_keep_memory=%s",
             configured_model,
             llm_keep_memory,
         )
 
         _default_agent_instance = LangChainAgent(
-            model=configured_model, use_memory=llm_keep_memory
+            model=configured_model,
+            use_memory=llm_keep_memory,
+            max_messages=llm_keep_memory_limit,
         )
     return _default_agent_instance
 

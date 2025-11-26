@@ -98,7 +98,7 @@ class QueryService:
         keywords = analysis.get("keywords") or []
         queryType = analysis.get("queryType", "QueryTypeExact")
 
-        logger.info(
+        logger.debug(
             "query_group: group_uniid=%s intent=%s gid=%s resolved=%s keywords=%s start_time=%s end_time=%s",
             group_uniid,
             queryType,
@@ -378,7 +378,7 @@ class QueryService:
             q_ids = [int(k) for k in list(chunk_map.keys())]
             step_times["fetch_chunks"] = time.time() - step_start
 
-            logger.info(
+            logger.debug(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
                 len(candidates),
                 len(q_ids),

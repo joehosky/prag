@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     llm_model: str = "gpt-4.1-mini"
     llm_embedding_model: str = "text-embedding-3-small"
     llm_keep_memory: bool = False
+    llm_keep_memory_limit: int = 3
 
     # Application
     app_env: str = "development"
