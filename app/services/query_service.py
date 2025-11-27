@@ -180,13 +180,12 @@ class QueryService:
 
                 logger.debug("Qdrant filter: %s", query_filter)
 
-                res = qsvc.client.search(
-                    collection_name=qsvc.collection,
+                # Use optimized search method with HNSW ef parameter
+                res = qsvc.search(
                     query_vector=qvec,
                     limit=top_k,
-                    with_payload=True,
-                    with_vectors=False,
                     query_filter=query_filter,
+                    hnsw_ef=96,  # Lower than Qdrant default (128) for faster search
                 )
 
                 for hit in res:
@@ -436,7 +435,7 @@ class QueryService:
             fused_filtered = [f for f in fused if f.get("final", 0.0) >= 0.3]
             step_times["fuse_scores"] = time.time() - step_start
 
-            logger.info(
+            logger.debug(
                 "query_group:fused count=%d fused_filtered=%d",
                 len(fused),
                 len(fused_filtered),
