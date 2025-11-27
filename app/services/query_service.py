@@ -15,7 +15,7 @@ import json
 from typing import Any, Dict, List, Optional
 from app.agents.llm_manager import get_llm_manager
 
-from app.services.embedding_service import generate_embedding
+from app.services.embedding_service import generate_embedding, agenerate_embedding
 from app.vector_store.qdrant_client import QdrantService
 from qdrant_client.http import models as qmodels
 from app.repositories.chunk_message_summary_repo import ChunkMessageSummaryRepository
@@ -30,13 +30,15 @@ logger = logging.getLogger("app.services.query_service")
 
 
 class QueryService:
-    MAX_KEYWORDS = 5  # 最多提取多少個關鍵詞
-    MIN_KEYWORDS = 3  # 最少需要多少個關鍵詞（觸發 TextRank 回退）
+    MAX_KEYWORDS = 5  # Maximum keywords to extract
+    MIN_KEYWORDS = 3  # Minimum keywords needed (triggers TextRank fallback)
 
     _custom_dict_loaded = False
 
     def __init__(self):
         self._analysis_cache = {}
+        self._embedding_cache: Dict[str, List[float]] = {}  # Cache for embeddings
+        self._embedding_cache_max_size = 1000  # Maximum cache entries
 
         if not QueryService._custom_dict_loaded:
             try:
@@ -109,13 +111,29 @@ class QueryService:
             end_time,
         )
 
-        # 2) embedding for query
+        # 2) embedding for query with caching
         step_start = time.time()
-        try:
-            qvec = await asyncio.to_thread(generate_embedding, resolved)
-        except Exception:
-            logger.exception("Failed to generate embedding for query")
-            qvec = None
+        qvec = None
+        cache_key = resolved.strip().lower()  # Normalize for cache key
+
+        # Check cache first
+        if cache_key in self._embedding_cache:
+            qvec = self._embedding_cache[cache_key]
+            logger.debug("Embedding cache hit for query: %s", resolved[:50])
+        else:
+            try:
+                # Use native async function instead of wrapping sync in thread
+                qvec = await agenerate_embedding(resolved)
+
+                # Store in cache (with size limit)
+                if len(self._embedding_cache) >= self._embedding_cache_max_size:
+                    # Remove oldest entry (simple FIFO)
+                    self._embedding_cache.pop(next(iter(self._embedding_cache)))
+                self._embedding_cache[cache_key] = qvec
+                logger.debug("Embedding cached for query: %s", resolved[:50])
+            except Exception:
+                logger.exception("Failed to generate embedding for query")
+
         step_times["embedding"] = time.time() - step_start
 
         logger.debug(
