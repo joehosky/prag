@@ -4,6 +4,11 @@ Initialize Qdrant Vector Database
 
 import sys
 import os
+import io
+
+# Fix Windows console encoding
+sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8")
+sys.stderr = io.TextIOWrapper(sys.stderr.buffer, encoding="utf-8")
 
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
@@ -35,7 +40,7 @@ def init_qdrant():
             collection_name=collection_name,
             vectors_config=VectorParams(
                 size=768,
-                distance=Distance.COSINE,  # jinaai/jina-embeddings-v2-base-zh embedding dimension
+                distance=Distance.COSINE,  # BAAI/bge-base-zh-v1.5 embedding dimension
                 # size=1536, distance=Distance.COSINE  # OpenAI embedding dimension
             ),
         )

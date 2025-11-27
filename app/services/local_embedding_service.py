@@ -8,8 +8,13 @@ from __future__ import annotations
 
 import logging
 import time
+import warnings
 from typing import List, Union, Optional
-from functools import lru_cache
+
+# Suppress transformers warnings
+warnings.filterwarnings("ignore", category=FutureWarning, module="transformers")
+warnings.filterwarnings("ignore", message=".*BertSdpaSelfAttention.*")
+warnings.filterwarnings("ignore", message=".*were not initialized.*")
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +23,11 @@ _model_instance = None
 _model_name = None
 
 
-def get_local_embedding_model(model_name: str = "jinaai/jina-embeddings-v2-base-zh"):
+def get_local_embedding_model(model_name: str = "BAAI/bge-base-zh-v1.5"):
     """Get or create local embedding model instance.
 
     Supported models:
-    - jinaai/jina-embeddings-v2-base-zh (recommended for Traditional Chinese)
+    - BAAI/bge-base-zh-v1.5 (recommended for Traditional Chinese)
     - shibing624/text2vec-base-chinese (faster, good for Chinese)
     - uer/sbert-base-chinese-nli (lightweight)
 
@@ -40,12 +45,20 @@ def get_local_embedding_model(model_name: str = "jinaai/jina-embeddings-v2-base-
 
     try:
         from sentence_transformers import SentenceTransformer
+        import os
+
+        # Suppress tokenizers parallelism warnings
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
         logger.info(f"Loading local embedding model: {model_name}")
         start_time = time.time()
 
-        # Load model (will download on first use)
-        _model_instance = SentenceTransformer(model_name)
+        # Load model (will download on first use) with reduced verbosity
+        import transformers
+
+        transformers.logging.set_verbosity_error()
+
+        _model_instance = SentenceTransformer(model_name, device="cpu")
         _model_name = model_name
 
         elapsed = time.time() - start_time
@@ -68,7 +81,7 @@ def get_local_embedding_model(model_name: str = "jinaai/jina-embeddings-v2-base-
 
 def generate_local_embedding(
     text: str,
-    model_name: str = "jinaai/jina-embeddings-v2-base-zh",
+    model_name: str = "BAAI/bge-base-zh-v1.5",
     normalize: bool = True,
 ) -> List[float]:
     """Generate embedding vector using local model.
@@ -91,11 +104,12 @@ def generate_local_embedding(
     try:
         model = get_local_embedding_model(model_name)
 
-        # Generate embedding
+        # Generate embedding (with show_progress_bar=False to suppress progress bar)
         embedding = model.encode(
             text,
             normalize_embeddings=normalize,
             convert_to_numpy=True,
+            show_progress_bar=False,
         )
 
         # Convert numpy array to list
@@ -120,7 +134,7 @@ def generate_local_embedding(
 
 async def agenerate_local_embedding(
     text: str,
-    model_name: str = "jinaai/jina-embeddings-v2-base-zh",
+    model_name: str = "BAAI/bge-base-zh-v1.5",
     normalize: bool = True,
 ) -> List[float]:
     """Async version of generate_local_embedding.
@@ -143,7 +157,7 @@ async def agenerate_local_embedding(
 
 def generate_local_embeddings_batch(
     texts: List[str],
-    model_name: str = "jinaai/jina-embeddings-v2-base-zh",
+    model_name: str = "BAAI/bge-base-zh-v1.5",
     normalize: bool = True,
     batch_size: int = 32,
 ) -> List[List[float]]:

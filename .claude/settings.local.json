@@ -1,0 +1,9 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python scripts/test_embedding_models.py:*)"
+    ],
+    "deny": [],
+    "ask": []
+  }
+}

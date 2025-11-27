@@ -196,9 +196,10 @@ class QueryService:
                         {"id": pid, "score": float(getattr(hit, "score", 0.0))}
                     )
 
-                logger.info(
-                    "query_group:qdrant_search returned %d hits",
+                logger.debug(
+                    "query_group:qdrant_search returned %d hits, hits=%s",
                     len(qdrant_hits),
+                    qdrant_hits,
                 )
         except Exception:
             logger.exception("Qdrant search failed")
@@ -396,7 +397,7 @@ class QueryService:
             q_ids = [int(k) for k in list(chunk_map.keys())]
             step_times["fetch_chunks"] = time.time() - step_start
 
-            logger.info(
+            logger.debug(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
                 len(candidates),
                 len(q_ids),
@@ -413,7 +414,7 @@ class QueryService:
                 lambd = 0.40
                 max_results = 12
             elif qtype == "QueryTypeExact":
-                alpha, beta, gamma, delta = 0.35, 0.45, 0.15, 0.05
+                alpha, beta, gamma, delta = 0.45, 0.45, 0.10, 0.05
                 lambd = 0.20
                 max_results = 6
             else:

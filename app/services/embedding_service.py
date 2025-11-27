@@ -44,7 +44,7 @@ def generate_embedding(
             local_model = model or getattr(
                 settings,
                 "llm_embedding_model",
-                "jinaai/jina-embeddings-v2-base-zh",
+                "BAAI/bge-base-zh-v1.5",
             )
             return generate_local_embedding(text, local_model)
         else:
@@ -76,7 +76,7 @@ async def agenerate_embedding(
             local_model = model or getattr(
                 settings,
                 "llm_embedding_model",
-                "jinaai/jina-embeddings-v2-base-zh",
+                "BAAI/bge-base-zh-v1.5",
             )
             return await agenerate_local_embedding(text, local_model)
         else:
