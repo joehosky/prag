@@ -98,7 +98,17 @@
 
    - 如有建立新的 model，記得加入該 model 到 models 目錄下的 **init**.py，以免 relationship 無法正確建立。
 
-5. **啟動服務**
+5. **安裝本地嵌入模型依賴(模型會在首次使用時自動下載,無需手動操作)**
+
+   ```powershell
+   # 安裝 sentence-transformers
+   uv pip install sentence-transformers
+
+   # 安裝 PyTorch (CPU 版本)
+   uv pip install torch --index-url https://download.pytorch.org/whl/cpu
+   ```
+
+6. **啟動服務**
 
    ```powershell
    # 開發模式（建議使用批次檔，它會在啟動前自動套用 migrations）
@@ -178,3 +188,7 @@ LOG_RETENTION_DAYS=14
 ## 📝 License
 
 MIT License
+
+```
+
+```

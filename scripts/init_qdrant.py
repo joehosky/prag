@@ -34,7 +34,9 @@ def init_qdrant():
         client.create_collection(
             collection_name=collection_name,
             vectors_config=VectorParams(
-                size=1536, distance=Distance.COSINE  # OpenAI embedding dimension
+                size=768,
+                distance=Distance.COSINE,  # jinaai/jina-embeddings-v2-base-zh embedding dimension
+                # size=1536, distance=Distance.COSINE  # OpenAI embedding dimension
             ),
         )
         print(f"✓ Qdrant collection '{collection_name}' initialized successfully!")

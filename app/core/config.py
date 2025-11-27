@@ -24,6 +24,7 @@ class Settings(BaseSettings):
     # LLM Configuration
     llm_provider: str = "openai"
     llm_model: str = "gpt-4.1-mini"
+    llm_embedding_provider: str = "openai"
     llm_embedding_model: str = "text-embedding-3-small"
     llm_keep_memory: bool = False
     llm_keep_memory_limit: int = 3

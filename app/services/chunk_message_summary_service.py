@@ -468,7 +468,7 @@ def summarize_group_messages_background(
                         points = []
                         for i, txt in enumerate(text_chunks):
                             try:
-                                vec = generate_embedding(txt, timeout=60, retries=1)
+                                vec = generate_embedding(txt)
                             except Exception:
                                 logger.exception(
                                     "Embedding generation failed for summary %s chunk %d",

@@ -15,7 +15,7 @@ import json
 from typing import Any, Dict, List, Optional
 from app.agents.llm_manager import get_llm_manager
 
-from app.services.embedding_service import generate_embedding, agenerate_embedding
+from app.services.embedding_service import agenerate_embedding
 from app.vector_store.qdrant_client import QdrantService
 from qdrant_client.http import models as qmodels
 from app.repositories.chunk_message_summary_repo import ChunkMessageSummaryRepository
@@ -196,7 +196,7 @@ class QueryService:
                         {"id": pid, "score": float(getattr(hit, "score", 0.0))}
                     )
 
-                logger.debug(
+                logger.info(
                     "query_group:qdrant_search returned %d hits",
                     len(qdrant_hits),
                 )
@@ -396,7 +396,7 @@ class QueryService:
             q_ids = [int(k) for k in list(chunk_map.keys())]
             step_times["fetch_chunks"] = time.time() - step_start
 
-            logger.debug(
+            logger.info(
                 "query_group:prepared candidates=%d q_ids=%d q_scores_sample=%s bm_scores_sample=%s kw_scores_sample=%s",
                 len(candidates),
                 len(q_ids),
@@ -435,7 +435,7 @@ class QueryService:
             fused_filtered = [f for f in fused if f.get("final", 0.0) >= 0.3]
             step_times["fuse_scores"] = time.time() - step_start
 
-            logger.debug(
+            logger.info(
                 "query_group:fused count=%d fused_filtered=%d",
                 len(fused),
                 len(fused_filtered),
